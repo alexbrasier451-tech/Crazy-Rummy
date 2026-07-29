@@ -44,6 +44,20 @@
       }
       h2 { margin-top: 0; font-size: 1.2rem; }
       ol { padding-left: 1.35rem; color: #d9d2c5; line-height: 1.55; }
+      label { display: block; margin-top: 0.75rem; font-weight: 800; }
+      input {
+        width: 100%;
+        margin-top: 0.5rem;
+        padding: 0.85rem 1rem;
+        border: 2px solid #536259;
+        border-radius: 0.75rem;
+        background: #0b0d0e;
+        color: #f7f2e9;
+        font: 800 1.5rem/1 system-ui, sans-serif;
+        letter-spacing: 0.2em;
+        text-align: center;
+        text-transform: uppercase;
+      }
       a, button {
         display: block;
         width: 100%;
@@ -62,6 +76,14 @@
       button { background: #5a4930; cursor: pointer; }
       .note { color: #bdb5a6; font-size: 0.9rem; }
       #copy-status { min-height: 1.4em; color: #e2b542; }
+      .active-code {
+        margin: 0.5rem 0;
+        color: #e2b542;
+        font-size: 2rem;
+        font-weight: 900;
+        letter-spacing: 0.18em;
+        text-align: center;
+      }
     </style>
   </head>
   <body>
@@ -74,11 +96,31 @@
       </p>
 
       <section>
+        <h2>Pair the two devices</h2>
+        <p class="note">
+          Both devices must show the same six-character code. On the phone,
+          open this launcher, enter the code shown on the PC, and press Use
+          this code.
+        </p>
+        <p id="active-code" class="active-code" aria-live="polite"></p>
+        <label for="test-code">Test code</label>
+        <input
+          id="test-code"
+          name="test-code"
+          maxlength="6"
+          autocapitalize="characters"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button id="apply-code" type="button">Use this code</button>
+      </section>
+
+      <section>
         <h2>1. Direct-path test</h2>
         <ol>
-          <li>Copy the phone link and send it to your phone.</li>
-          <li>Switch phone Wi-Fi off, then open that link using 4G/5G.</li>
-          <li>Open the desktop side here; it opens in a new tab.</li>
+          <li>Confirm the phone shows the same code as this PC.</li>
+          <li>On the phone, tap Open phone side on this device.</li>
+          <li>On the PC, tap Open desktop side.</li>
           <li>Both screens should report Passed.</li>
         </ol>
         <a id="direct-host" href="#">Open desktop side</a>
@@ -90,8 +132,8 @@
         <h2>2. Forced-TURN test</h2>
         <ol>
           <li>Close the two direct-test pages.</li>
-          <li>Copy the phone relay link and open it on the cellular phone.</li>
-          <li>Open the desktop relay side here in its new tab.</li>
+          <li>Confirm both launchers still show the same code.</li>
+          <li>Open the phone relay side, then the desktop relay side.</li>
           <li>Both reports must show relay for local and remote candidates.</li>
         </ol>
         <a id="relay-host" href="#">Open desktop relay side</a>
