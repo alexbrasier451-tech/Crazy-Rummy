@@ -147,6 +147,7 @@ export function createControlledTopologyNetwork({
   function endpoint(localPlayerId) {
     if (endpoints.has(localPlayerId)) return endpoints.get(localPlayerId);
     let state = PEER_STATE.IDLE;
+    const connectionStates = new Map();
     let receiver = () => {};
     const stateListeners = new Set();
     const value = Object.freeze({
@@ -181,7 +182,10 @@ export function createControlledTopologyNetwork({
           localPlayerId,
           connections: playerIds
             .filter((playerId) => playerId !== localPlayerId)
-            .map((playerId) => Object.freeze({ playerId, state }))
+            .map((playerId) => Object.freeze({
+              playerId,
+              state: connectionStates.get(playerId) ?? state
+            }))
         });
       },
       async close() {
@@ -194,6 +198,16 @@ export function createControlledTopologyNetwork({
           sourcePlayerId: message.fromPlayerId,
           destinationPlayerId: localPlayerId
         }));
+      },
+      _setState(nextState, nextConnections = {}) {
+        state = nextState;
+        connectionStates.clear();
+        for (const [playerId, connectionState] of Object.entries(nextConnections)) {
+          connectionStates.set(playerId, connectionState);
+        }
+        const snapshot = value.getSnapshot();
+        for (const listener of stateListeners) listener(snapshot);
+        return snapshot;
       }
     });
     endpoints.set(localPlayerId, value);

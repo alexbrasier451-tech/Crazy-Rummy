@@ -33,6 +33,9 @@ export function createOnlineMatchSession({
   let network = { state: "CONNECTING", transport: PEER_STATE.IDLE, sync: "CONNECTING", incompatible: false };
   let sequence = 0;
   let commandOrdinal = 0;
+  let previousTransportState = PEER_STATE.IDLE;
+  let guestRebindRequested = false;
+  const interruptedPlayerIds = new Set();
   const playerToSeat = new Map(boot.seats.map((seat) => [seat.playerId, seat.seatId]));
   const seatToPlayer = new Map(boot.seats.map((seat) => [seat.seatId, seat.playerId]));
 
@@ -87,7 +90,19 @@ export function createOnlineMatchSession({
       }])),
       send: sendToSeat,
       notCommittedCommands: recoveryRecord?.notCommittedCommands,
-      onStateChange() { sequence = sync.getState().revision; projection = playerView(sync.getState(), boot.localSeatId); persist(); terminal(); publish(); },
+      onStateChange() {
+        sequence = sync.getState().revision;
+        projection = playerView(sync.getState(), boot.localSeatId);
+        const status = sync.getStatus();
+        network = {
+          ...network,
+          state: status.state,
+          sync: status.state,
+          recoveryDeadline: status.recoveryDeadline ?? null,
+          terminalReason: status.terminalReason ?? null
+        };
+        persist(); terminal(); publish();
+      },
       onForfeit() { terminal(); }, onAbandon() { terminal(); }
     });
   } else {
@@ -96,12 +111,52 @@ export function createOnlineMatchSession({
       send: (envelope) => topology.send(boot.hostPlayerId, envelope),
       recoveryRecord,
       onSnapshot(next) { projection = next; sequence = next.revision; persist(); terminal(); publish(); },
-      onStatus(status) { network = { ...network, state: status.state, sync: status.state, recoveryDeadline: status.hostRecoveryDeadline ?? null, terminalReason: status.terminalReason ?? null }; persist(); terminal(); publish(); },
+      onStatus(status) {
+        if (status.state !== "RECONNECTING") guestRebindRequested = false;
+        network = { ...network, state: status.state, sync: status.state, recoveryDeadline: status.hostRecoveryDeadline ?? null, terminalReason: status.terminalReason ?? null };
+        persist(); terminal(); publish();
+      },
       onCommandResult(result) { lastAction = { commandId: result.commandId, phase: result.accepted === true ? "ACCEPTED" : result.accepted === false ? "REJECTED" : "UNCERTAIN", ...copy(result) }; publish(); }
     });
   }
   topology.onMessage(receive);
-  topology.subscribe((value) => { network = { ...network, transport: value.state, incompatible: value.state === PEER_STATE.FAILED, state: value.state === PEER_STATE.FAILED ? "INCOMPATIBLE" : network.state }; if (!isHost && [PEER_STATE.DISCONNECTED, PEER_STATE.FAILED].includes(value.state)) sync.markHostDisconnected?.(clock()); publish(); });
+  topology.subscribe((value) => {
+    if (disposed) return;
+    const interrupted = [PEER_STATE.DISCONNECTED, PEER_STATE.FAILED].includes(value.state);
+    const wasInterrupted = [PEER_STATE.DISCONNECTED, PEER_STATE.FAILED].includes(previousTransportState);
+    network = {
+      ...network,
+      transport: value.state,
+      incompatible: value.state === PEER_STATE.FAILED,
+      state: value.state === PEER_STATE.FAILED ? "INCOMPATIBLE" : network.state
+    };
+    if (isHost) {
+      for (const peer of value.connections ?? []) {
+        const peerInterrupted = [PEER_STATE.DISCONNECTED, PEER_STATE.FAILED, PEER_STATE.CLOSED]
+          .includes(peer.state);
+        if (peerInterrupted && !interruptedPlayerIds.has(peer.playerId)) {
+          interruptedPlayerIds.add(peer.playerId);
+          const seatId = playerToSeat.get(peer.playerId);
+          if (seatId) sync.disconnectSeat?.(seatId, clock());
+        } else if (!peerInterrupted) {
+          interruptedPlayerIds.delete(peer.playerId);
+        }
+      }
+    } else if (interrupted && !wasInterrupted) {
+      guestRebindRequested = false;
+      sync.markHostDisconnected?.(clock());
+    } else if (
+      value.state === PEER_STATE.CONNECTED
+      && wasInterrupted
+      && sync.getStatus?.().state === "RECONNECTING"
+      && !guestRebindRequested
+    ) {
+      guestRebindRequested = true;
+      sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
+    }
+    previousTransportState = value.state;
+    publish();
+  });
 
   function snapshot() {
     const status = sync.getStatus?.() ?? {};

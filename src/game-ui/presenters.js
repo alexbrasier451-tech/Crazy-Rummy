@@ -1,5 +1,6 @@
 const SUITS = Object.freeze(["clubs", "diamonds", "hearts", "spades"]);
 const RANKS = Object.freeze(["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]);
+const SUIT_SYMBOLS = Object.freeze({ clubs: "♣", diamonds: "♦", hearts: "♥", spades: "♠" });
 
 const SUIT_ORDER = new Map(SUITS.map((suit, index) => [suit, index]));
 const RANK_ORDER = new Map(RANKS.map((rank, index) => [rank, index]));
@@ -8,7 +9,7 @@ export function cardParts(cardId) {
   if (typeof cardId !== "string") return null;
   const [suit, rank, ...rest] = cardId.split(":");
   if (rest.length || !SUIT_ORDER.has(suit) || !RANK_ORDER.has(rank)) return null;
-  return { id: cardId, suit, rank };
+  return { id: cardId, suit, rank, symbol: SUIT_SYMBOLS[suit] };
 }
 
 export function cardDisplayName(cardId) {

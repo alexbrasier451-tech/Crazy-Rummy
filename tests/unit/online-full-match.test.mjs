@@ -9,6 +9,7 @@ import {
   assertStateInvariants
 } from "../../src/engine/index.js";
 import { SYNC_MESSAGE, SYNC_STATUS } from "../../src/online/index.js";
+import { PEER_STATE } from "../../src/online/transport/index.js";
 import {
   STAGE6_SEATS,
   createOnlineMatchFixture
@@ -89,6 +90,34 @@ test("three-seat authority keeps actions pending until delivery and fails illega
   assert.equal(fixture.authoritativeState().revision, revisionBeforeIllegal + 1);
   assert.equal(fixture.sessions.b.getSnapshot().lastAction.phase, "ACCEPTED");
   assertConverged(fixture, "duplicate opening command");
+});
+
+test("a recovered peer link automatically pauses authority and rebinds the guest", async (t) => {
+  const fixture = createOnlineMatchFixture();
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  fixture.network.endpoint("player-a")._setState(PEER_STATE.DISCONNECTED, {
+    "player-b": PEER_STATE.DISCONNECTED,
+    "player-c": PEER_STATE.CONNECTED
+  });
+  fixture.network.endpoint("player-b")._setState(PEER_STATE.DISCONNECTED, {
+    "player-a": PEER_STATE.DISCONNECTED
+  });
+
+  assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.PAUSED);
+  assert.deepEqual(fixture.hostSync.getStatus().disconnectedSeatIds, ["b"]);
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RECONNECTING);
+  assert.equal(fixture.sessions.a.getSnapshot().network.state, SYNC_STATUS.PAUSED);
+  assert.equal(fixture.sessions.b.getSnapshot().network.state, SYNC_STATUS.RECONNECTING);
+
+  fixture.network.endpoint("player-a")._setState(PEER_STATE.CONNECTED);
+  fixture.network.endpoint("player-b")._setState(PEER_STATE.CONNECTED);
+  fixture.network.flush();
+
+  assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.RUNNING);
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
+  assertConverged(fixture, "automatic transport rebind");
 });
 
 test("a thirteen-hand online match converges through delay, reorder, loss, duplication, and rebind", async (t) => {

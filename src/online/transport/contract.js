@@ -7,6 +7,7 @@ export const SIGNAL_KIND = Object.freeze({
   OFFER: "offer",
   ANSWER: "answer",
   ICE_CANDIDATE: "ice-candidate",
+  RESTART: "restart",
   CLOSE: "close",
 });
 

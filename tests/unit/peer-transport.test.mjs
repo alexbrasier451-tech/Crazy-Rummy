@@ -236,6 +236,41 @@ test("a later-starting guest offers only after the host is listening", async () 
   await Promise.all([pair.host.close(), pair.guest.close()]);
 });
 
+test("the designated guest offerer restarts ICE and restores an interrupted peer", async () => {
+  const pair = await connectedPeerFixture({
+    hostOfferer: false,
+    hostStartsFirst: true,
+  });
+  const offersBefore = pair.signalling.sent.filter(({ kind }) => kind === SIGNAL_KIND.OFFER).length;
+  const answersBefore = pair.signalling.sent.filter(({ kind }) => kind === SIGNAL_KIND.ANSWER).length;
+  const received = [];
+  pair.host.onMessage((payload) => received.push(payload.index));
+
+  pair.rtc.hostConnection.connectionState = "disconnected";
+  pair.rtc.hostConnection.emit("connectionstatechange");
+  pair.rtc.guestConnection.connectionState = "disconnected";
+  pair.rtc.guestConnection.emit("connectionstatechange");
+  await settle();
+
+  assert.equal(
+    pair.signalling.sent.filter(({ kind }) => kind === SIGNAL_KIND.OFFER).length,
+    offersBefore + 1,
+  );
+  assert.equal(
+    pair.signalling.sent.filter(({ kind }) => kind === SIGNAL_KIND.ANSWER).length,
+    answersBefore + 1,
+  );
+  assert.deepEqual(pair.rtc.guestConnection.offerOptions.at(-1), { iceRestart: true });
+  assert.equal(pair.rtc.guestConnection.restartIceCalls, 1);
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+
+  await pair.guest.send({ index: 1 });
+  await settle();
+  assert.deepEqual(received, [1]);
+  await Promise.all([pair.host.close(), pair.guest.close()]);
+});
+
 test("malformed or far-future wire traffic fails closed without extending liveness or growing reorder state", async () => {
   const malformed = await connectedPeerFixture({ maxWireBytes: 256, maxPendingMessages: 2 });
   malformed.rtc.channels.guest.send(JSON.stringify({
@@ -508,6 +543,8 @@ class FakeRtcConnection extends FakeEventTarget {
     this.remoteDescription = null;
     this.candidates = [];
     this.closed = false;
+    this.offerOptions = [];
+    this.restartIceCalls = 0;
     network[`${side}Connection`] = this;
   }
   createDataChannel(_label, options) {
@@ -520,7 +557,11 @@ class FakeRtcConnection extends FakeEventTarget {
     this.network.channels = { [this.side]: local, [remoteSide]: remote };
     return local;
   }
-  async createOffer() { return { type: "offer", sdp: `${this.side}-offer` }; }
+  async createOffer(options = undefined) {
+    this.offerOptions.push(options);
+    return { type: "offer", sdp: `${this.side}-offer` };
+  }
+  restartIce() { this.restartIceCalls += 1; }
   async createAnswer() { return { type: "answer", sdp: `${this.side}-answer` }; }
   async setLocalDescription(description) {
     this.localDescription = description;
@@ -622,7 +663,7 @@ async function connectedPeerFixture({
   }
   await settle();
   assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
-  return { host, guest, rtc };
+  return { host, guest, rtc, signalling };
 }
 
 function createTopologyPeerBus() {

@@ -4,10 +4,26 @@ import test from "node:test";
 import {
   buildLayoffSlots,
   buildMeld,
+  cardParts,
   phaseCopy,
   rejectionCopy,
   sortCardIds
 } from "../../src/game-ui/presenters.js";
+
+test("card parts include the suit glyph used by compact meld-card rendering", () => {
+  assert.deepEqual(cardParts("clubs:Q"), {
+    id: "clubs:Q",
+    suit: "clubs",
+    rank: "Q",
+    symbol: "♣"
+  });
+  assert.deepEqual(cardParts("hearts:2"), {
+    id: "hearts:2",
+    suit: "hearts",
+    rank: "2",
+    symbol: "♥"
+  });
+});
 
 test("hand sorting keeps custom order and deterministically sorts suit and rank", () => {
   const cards = ["spades:2", "clubs:K", "clubs:3", "hearts:A"];
