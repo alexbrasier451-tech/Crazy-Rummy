@@ -51,7 +51,7 @@ try {
     remote.on("negotiation-error", ({ err }) => fail(err));
     remote.on("state-change", ({ to }) => {
       report.connectionState = to;
-      render("Connectingâ€¦");
+      render("Connecting...");
     });
     remote.on("data-channel", ({ channel }) => wireChannel(channel));
     if (!remote.polite) {
@@ -60,13 +60,13 @@ try {
   });
 
   await peer.join(room);
-  render("Waiting for the other deviceâ€¦");
+  render("Waiting for the other device...");
 
   function wireChannel(channel) {
     if (dataChannel === channel) return;
     dataChannel = channel;
     report.channelState = channel.readyState;
-    render("Opening data channelâ€¦");
+    render("Opening data channel...");
 
     channel.addEventListener("open", () => {
       report.channelState = channel.readyState;
