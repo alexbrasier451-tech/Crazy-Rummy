@@ -5,12 +5,20 @@ const policy = params.get("policy") === "relay" ? "relay" : "all";
 const apiKey = window.CRAZY_RUMMY_METERED_KEY;
 const statusElement = document.querySelector("#status");
 const reportElement = document.querySelector("#report");
+const codeElement = document.querySelector("#test-code");
+const testCode = room?.match(/-manual-([2-9A-HJ-NP-Z]{6})$/)?.[1] || "LEGACY";
+let peerTimeout;
+let connectionTimeout;
 
 const report = {
   role,
   room,
+  testCode,
   provider: "Metered",
   startedAt: new Date().toISOString(),
+  pageInstanceId: crypto.randomUUID(),
+  signallingState: "starting",
+  peerJoined: false,
   iceTransportPolicy: policy,
   expectedPath: policy === "relay" ? "relay" : "direct",
   configuredTurn: false,
@@ -20,6 +28,7 @@ const report = {
   passed: false,
 };
 window.__probeReport = report;
+codeElement.textContent = testCode;
 
 try {
   validateInput();
@@ -44,10 +53,18 @@ try {
   let remotePeer;
   let dataChannel;
   let sentProbe = false;
+  let sentHello = false;
 
   peer.on("error", ({ err }) => fail(err));
   peer.on("peer-joined", ({ peer: remote }) => {
+    clearTimeout(peerTimeout);
+    report.peerJoined = true;
+    report.peerJoinedAt = new Date().toISOString();
+    report.signallingState = "peer-joined";
     remotePeer = remote;
+    connectionTimeout = setTimeout(() => {
+      fail(new Error("Matching peer joined, but the WebRTC data channel did not complete."));
+    }, 45_000);
     remote.on("negotiation-error", ({ err }) => fail(err));
     remote.on("state-change", ({ to }) => {
       report.connectionState = to;
@@ -60,7 +77,16 @@ try {
   });
 
   await peer.join(room);
-  render("Waiting for the other device...");
+  report.signallingState = "joined";
+  report.joinedAt = new Date().toISOString();
+  if (!report.peerJoined) {
+    peerTimeout = setTimeout(() => {
+      fail(new Error(
+        `No matching peer joined code ${testCode}. Confirm both devices show the same code and opposite sides.`,
+      ));
+    }, 45_000);
+  }
+  render(`Waiting for matching code ${testCode}...`);
 
   function wireChannel(channel) {
     if (dataChannel === channel) return;
@@ -71,18 +97,30 @@ try {
     channel.addEventListener("open", () => {
       report.channelState = channel.readyState;
       render("Data channel open.");
-      if (role === "host" && !sentProbe) {
-        sentProbe = true;
-        channel.send(JSON.stringify({
-          type: "probe",
-          nonce: crypto.randomUUID(),
-          sentAt: Date.now(),
-        }));
+      if (!sentHello) {
+        sentHello = true;
+        channel.send(JSON.stringify({ type: "hello", role }));
       }
     });
 
     channel.addEventListener("message", async ({ data }) => {
       const message = JSON.parse(data);
+      if (message.type === "hello") {
+        report.remoteRole = message.role;
+        if (message.role === role) {
+          fail(new Error(`Both devices opened the ${role} side. Open one desktop and one phone side.`));
+          return;
+        }
+        if (role === "host" && !sentProbe) {
+          sentProbe = true;
+          channel.send(JSON.stringify({
+            type: "probe",
+            nonce: crypto.randomUUID(),
+            sentAt: Date.now(),
+          }));
+        }
+        return;
+      }
       if (role === "guest" && message.type === "probe") {
         report.payloadReceived = true;
         channel.send(JSON.stringify({
@@ -108,6 +146,8 @@ try {
   }
 
   async function finish() {
+    clearTimeout(peerTimeout);
+    clearTimeout(connectionTimeout);
     if (!remotePeer) throw new Error("Remote peer disappeared before result collection.");
     Object.assign(report, await collectSelectedPair(remotePeer.pc));
     const relaySelected =
@@ -170,6 +210,8 @@ async function collectSelectedPair(connection) {
 }
 
 function fail(error) {
+  clearTimeout(peerTimeout);
+  clearTimeout(connectionTimeout);
   report.failure = error instanceof Error ? error.message : String(error);
   report.finishedAt = new Date().toISOString();
   report.passed = false;
