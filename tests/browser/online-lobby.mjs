@@ -54,6 +54,10 @@ try {
   await page.evaluate(() => globalThis.onlineHarness.prepareTwoPlayerStart());
   await page.getByText("2 of 2 players").waitFor();
   assert.equal(await page.getByRole("button", { name: "Start match" }).isEnabled(), true);
+  await page.getByRole("button", { name: "Start match" }).click();
+  await page.getByRole("button", { name: "Join started match" }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Join started match" }).isEnabled(), true);
+  assert.ok(await page.evaluate(() => globalThis.onlineHarness.matchStartAttempts()) >= 1);
 
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth > document.documentElement.clientWidth

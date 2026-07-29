@@ -44,7 +44,10 @@ export function createHostStarTransport({
       matchId,
       localPlayerId,
       remotePlayerId,
-      offerer: isHost,
+      // The host commits the lobby transition and subscribes first. The guest
+      // receives its private bootstrap later, so it publishes the transient
+      // SDP offer only after the host is already listening on the pair scope.
+      offerer: !isHost,
       pairPlayerIds: Object.freeze([localPlayerId, remotePlayerId].sort()),
     });
     if (!peer || typeof peer.start !== "function" || typeof peer.send !== "function") {

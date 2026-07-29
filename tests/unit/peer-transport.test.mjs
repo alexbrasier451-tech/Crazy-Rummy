@@ -219,6 +219,22 @@ test("injected WebRTC peers negotiate offer/answer/ICE, prove seats, order event
   assert.equal(rtc.guestConnection.closed, true);
 });
 
+test("a later-starting guest offers only after the host is listening", async () => {
+  const pair = await connectedPeerFixture({
+    hostOfferer: false,
+    hostStartsFirst: true,
+  });
+
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(
+    pair.rtc.hostConnection.remoteDescription.sdp,
+    "guest-offer",
+  );
+
+  await Promise.all([pair.host.close(), pair.guest.close()]);
+});
+
 test("malformed or far-future wire traffic fails closed without extending liveness or growing reorder state", async () => {
   const malformed = await connectedPeerFixture({ maxWireBytes: 256, maxPendingMessages: 2 });
   malformed.rtc.channels.guest.send(JSON.stringify({
@@ -327,6 +343,10 @@ test("six-seat host-star creates five host links and one guest link, with no gue
   assert.equal(created.some(({ localPlayerId, remotePlayerId }) =>
     localPlayerId !== "host" && remotePlayerId !== "host"), false);
   assert.equal(created.every(({ pairPlayerIds }) => pairPlayerIds.length === 2), true);
+  assert.equal(created.filter(({ localPlayerId }) => localPlayerId === "host")
+    .every(({ offerer }) => offerer === false), true);
+  assert.equal(created.filter(({ localPlayerId }) => localPlayerId !== "host")
+    .every(({ offerer }) => offerer === true), true);
 
   const forwarded = [];
   topologies.g2.onMessage((payload, meta) => forwarded.push([meta.sourcePlayerId, payload.index]));
@@ -495,11 +515,12 @@ class FakeRtcConnection extends FakeEventTarget {
     const remote = new FakeDataChannel();
     local.peer = remote;
     remote.peer = local;
-    this.network.channels = { host: local, guest: remote };
+    const remoteSide = this.side === "host" ? "guest" : "host";
+    this.network.channels = { [this.side]: local, [remoteSide]: remote };
     return local;
   }
-  async createOffer() { return { type: "offer", sdp: "host-offer" }; }
-  async createAnswer() { return { type: "answer", sdp: "guest-answer" }; }
+  async createOffer() { return { type: "offer", sdp: `${this.side}-offer` }; }
+  async createAnswer() { return { type: "answer", sdp: `${this.side}-answer` }; }
   async setLocalDescription(description) {
     this.localDescription = description;
     queueMicrotask(() => this.emit("icecandidate", {
@@ -508,10 +529,10 @@ class FakeRtcConnection extends FakeEventTarget {
   }
   async setRemoteDescription(description) {
     this.remoteDescription = description;
-    if (this.side === "guest" && description.type === "offer") {
-      this.emit("datachannel", { channel: this.network.channels.guest });
+    if (description.type === "offer") {
+      this.emit("datachannel", { channel: this.network.channels[this.side] });
     }
-    if (this.side === "host" && description.type === "answer") {
+    if (description.type === "answer") {
       for (const connection of [this.network.hostConnection, this.network.guestConnection]) {
         connection.connectionState = "connected";
         connection.emit("connectionstatechange");
@@ -554,6 +575,8 @@ async function connectedPeerFixture({
   maxWireBytes,
   maxPendingMessages,
   hostVerifyRemoteSeatProof,
+  hostOfferer = true,
+  hostStartsFirst = false,
 } = {}) {
   const signalling = createSignalPair();
   const rtc = createRtcPair();
@@ -573,7 +596,7 @@ async function connectedPeerFixture({
     remotePlayerId: "guest",
     localSeatProof: PROOFS.host,
     verifyRemoteSeatProof: hostVerifyRemoteSeatProof ?? verify("guest"),
-    offerer: true,
+    offerer: hostOfferer,
     signalling: signalling.host,
     scheduler: createIntervalScheduler(),
     rtcPeerConnectionFactory: rtc.hostFactory,
@@ -584,12 +607,18 @@ async function connectedPeerFixture({
     remotePlayerId: "host",
     localSeatProof: PROOFS.guest,
     verifyRemoteSeatProof: verify("host"),
-    offerer: false,
+    offerer: !hostOfferer,
     signalling: signalling.guest,
     scheduler: createIntervalScheduler(),
     rtcPeerConnectionFactory: rtc.guestFactory,
   });
-  await Promise.all([guest.start(), host.start()]);
+  if (hostStartsFirst) {
+    await host.start();
+    await settle();
+    await guest.start();
+  } else {
+    await Promise.all([guest.start(), host.start()]);
+  }
   await settle();
   assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
   return { host, guest, rtc };

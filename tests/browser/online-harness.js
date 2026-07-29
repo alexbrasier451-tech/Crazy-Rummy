@@ -27,6 +27,7 @@ const players = [
 ];
 const service = createFakeLobbyService();
 const sessions = new Map();
+let matchStartAttempts = 0;
 const router = Object.freeze({
   addBackLayer() { return () => {}; }
 });
@@ -74,7 +75,11 @@ function renderWaitingRoom(player) {
     navigate: navigateFor(player),
     router,
     onlineSession: sessionFor(player),
-    localSession: localSessionFor(player)
+    localSession: localSessionFor(player),
+    async startOnlineMatch() {
+      matchStartAttempts += 1;
+      throw new Error("Injected match connection failure.");
+    }
   }));
 }
 
@@ -121,5 +126,6 @@ renderLobby(players[1]);
 globalThis.onlineHarness = Object.freeze({
   fillOpenRoom,
   startClosedJourney,
-  prepareTwoPlayerStart
+  prepareTwoPlayerStart,
+  matchStartAttempts: () => matchStartAttempts
 });

@@ -58,7 +58,7 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
       message ? element("p", { className: "online-message", role: "status", text: message }) : null,
       stack(
         actionButton({ label: ready ? "I’m not ready" : "I’m ready", pending: pending === "ready", disabled: !snapshot.online, onActivate: () => run("ready", "setReady", { ready: !ready }) }),
-        isHost ? [
+        isHost && room.status !== "STARTED" ? [
           actionButton({ label: "Start match", variant: "primary", pending: pending === "start", disabled: !snapshot.online || !canStart || room.status === "STARTED", onActivate: () => run("start", "startMatch") }),
           actionButton({ label: "Cancel table", variant: "danger", pending: pending === "cancel", disabled: !snapshot.online || room.status !== "OPEN", onActivate: () => run("cancel", "cancelTable") })
         ] : room.status === "STARTED"
