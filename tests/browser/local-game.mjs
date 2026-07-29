@@ -209,6 +209,37 @@ try {
   "local mode must not render an empty online-connection placeholder");
   assert.equal(await control(page, "developer-seat").count(), 0,
     "nonessential game context should be collapsed initially");
+  const phoneLayout = await page.evaluate(() => {
+    const table = document.querySelector(".game-table");
+    const stock = document.querySelector(".stock-discard > :first-child");
+    const discard = document.querySelector(".stock-discard > :last-child");
+    const hand = document.querySelector(".game-private-hand");
+    const launcher = document.querySelector(".game-action-launch");
+    const tableStyle = table ? getComputedStyle(table) : null;
+    const launcherStyle = launcher ? getComputedStyle(launcher) : null;
+    return {
+      tableClientHeight: table?.clientHeight ?? 0,
+      tableScrollHeight: table?.scrollHeight ?? 0,
+      tableOverflowY: tableStyle?.overflowY,
+      stockTop: Math.round(stock?.getBoundingClientRect().top ?? -1),
+      discardTop: Math.round(discard?.getBoundingClientRect().top ?? -2),
+      handBottom: Math.round(hand?.getBoundingClientRect().bottom ?? 0),
+      launcherTop: Math.round(launcher?.getBoundingClientRect().top ?? -1),
+      launcherPosition: launcherStyle?.position
+    };
+  });
+  assert.ok(
+    phoneLayout.tableScrollHeight <= phoneLayout.tableClientHeight + 1,
+    "the phone table must expand to its content instead of creating a clipped nested scroller"
+  );
+  assert.equal(phoneLayout.tableOverflowY, "visible",
+    "the phone table should participate in the page's single vertical scroll");
+  assert.equal(phoneLayout.stockTop, phoneLayout.discardTop,
+    "stock and discard should share a compact row on a phone");
+  assert.equal(phoneLayout.launcherPosition, "static",
+    "the phone Actions launcher must remain in document flow");
+  assert.ok(phoneLayout.launcherTop >= phoneLayout.handBottom,
+    "the phone Actions launcher must not cover the private hand");
   await openActions(page);
   const actionMenu = page.getByRole("region", { name: "Actions", exact: true });
   await actionMenu.waitFor();

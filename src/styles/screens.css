@@ -1031,8 +1031,101 @@
 }
 
 @media (max-width: 29.9375rem) {
+  .game-table {
+    max-height: none;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    overflow: visible;
+    overscroll-behavior: auto;
+  }
+
+  .game-table .player-list {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr));
+    gap: var(--space-1);
+  }
+
+  .game-table .player-chip {
+    min-height: var(--tap-min);
+    grid-template-columns: 2rem minmax(0, 1fr);
+    gap: 0 0.45rem;
+    padding: 0.3rem 0.45rem;
+  }
+
+  .game-table .player-chip__marker {
+    width: 2rem;
+    height: 2rem;
+    grid-row: 1 / span 2;
+  }
+
+  .game-table .player-chip__name {
+    align-self: end;
+    font-size: var(--text-sm);
+    line-height: 1.1;
+  }
+
+  .game-table .player-chip__state {
+    grid-column: 2;
+    align-self: start;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .game-table .score-strip {
+    padding-block: var(--space-1);
+  }
+
+  .game-table .score-strip__item {
+    min-width: 5.5rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 0.25rem;
+    padding-inline: var(--space-1);
+  }
+
+  .game-table .score-strip__score {
+    grid-column: 2;
+    font-size: var(--text-base);
+  }
+
+  .game-table .score-strip__state {
+    grid-column: 1 / -1;
+  }
+
   .stock-discard {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    padding-block-start: var(--space-2);
+  }
+
+  .game-private-hand {
+    gap: var(--space-1);
+  }
+
+  .game-private-hand .hand-tray {
+    padding-block: var(--space-2);
+  }
+
+  .game-private-hand .hand-tray__list {
+    gap: var(--space-1);
+    margin-block-start: var(--space-2);
+    padding-inline: var(--space-2);
+  }
+
+  .game-sort,
+  .game-choice {
+    gap: var(--space-1);
+    margin-inline: var(--space-2);
+  }
+
+  .game-action-launch {
+    position: static;
+    inset: auto;
+    padding: 0;
+  }
+
+  .game-action-launch .action {
+    width: 100%;
+    min-width: 0;
   }
 
   .game-developer {
