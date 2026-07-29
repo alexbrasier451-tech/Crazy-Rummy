@@ -16,7 +16,10 @@ credential, private key, or long-lived TURN credential. The browser-visible
 Metered key is deliberately publishable but must still be independently
 revocable and restricted to the beta:
 
-- exact origin `https://alexbrasier451-tech.github.io`;
+- exact origin `https://alexbrasier451-tech.github.io` when the Metered
+  dashboard exposes an allowed-origin control; the current dashboard does not,
+  so this beta records that limitation and relies on its narrow channel scope,
+  revocation, and hard spending cap instead;
 - minimum Publish, Subscribe, Presence, and Send actions;
 - only the `crazy-rummy/v1/**` application channels;
 - provider-injected short-lived TURN configuration;
@@ -40,8 +43,10 @@ build.
 4. Rerun **Deploy online beta to GitHub Pages** after the variables are saved.
 
 The publishable key is embedded in downloaded JavaScript by design; storing it
-as an Actions secret would not make it confidential. Dashboard restrictions
-and independent revocation are the security boundary.
+as an Actions secret would not make it confidential. Channel/action
+restrictions, independent revocation, and the spending cap are the current
+security boundary. Add the exact allowed origin above if Metered exposes that
+control later.
 
 ## Emergency stop
 
