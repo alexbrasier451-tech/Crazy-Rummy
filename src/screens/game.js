@@ -275,6 +275,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     networkAnnouncements: new Set(),
     showDetails: false,
     handToolsMinimized: false,
+    handScrollLeft: 0,
     promptedDrawTurns: new Set()
   };
 
@@ -1139,6 +1140,8 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
   }
 
   function render() {
+    const previousHandList = workspace.querySelector("[data-private-hand] .hand-tray__list");
+    if (previousHandList) ui.handScrollLeft = previousHandList.scrollLeft;
     const { snapshot, view, hand, localSeatId } = current();
     reconcileLastAction(snapshot);
     const presentationSnapshot = isOnline && ui.queuedActions.size
@@ -1362,6 +1365,8 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       handSection,
       actionLaunch()
     );
+    const currentHandList = workspace.querySelector("[data-private-hand] .hand-tray__list");
+    if (currentHandList) currentHandList.scrollLeft = ui.handScrollLeft;
     let sheet;
     if (ui.sheet === "actions") sheet = actionMenuSheet(view, hand, localSeatId, cards);
     if (ui.sheet === "compose") sheet = composerSheet(view, hand, localSeatId, cards);

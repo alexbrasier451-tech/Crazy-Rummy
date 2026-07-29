@@ -283,10 +283,28 @@ try {
 
   await selectActiveSeat(page);
   await openActions(page);
-  const liveOpeningCard = await firstPrivateCard(page);
+  const privateHandList = page.locator("[data-private-hand] .hand-tray__list");
+  const userDefinedHandPosition = await privateHandList.evaluate((node) => {
+    node.scrollLeft = node.scrollWidth - node.clientWidth;
+    return node.scrollLeft;
+  });
+  assert.ok(userDefinedHandPosition > 0,
+    "the phone fixture should have a horizontally scrollable hand");
+  const liveOpeningCard = page.locator("[data-private-hand] [data-card-id]").last();
   await liveOpeningCard.tap();
   assert.equal(await liveOpeningCard.getAttribute("aria-pressed"), "true",
     "the active player must be able to select a card while Actions remains open");
+  assert.ok(Math.abs(await privateHandList.evaluate((node) => node.scrollLeft) - userDefinedHandPosition) <= 1,
+    "selecting a card must preserve the player's horizontal hand position");
+  await liveOpeningCard.tap();
+  assert.equal(await liveOpeningCard.getAttribute("aria-pressed"), "false",
+    "the active player must be able to deselect the same card");
+  assert.ok(Math.abs(await privateHandList.evaluate((node) => node.scrollLeft) - userDefinedHandPosition) <= 1,
+    "deselecting a card must preserve the player's horizontal hand position");
+  await liveOpeningCard.tap();
+  assert.equal(await liveOpeningCard.getAttribute("aria-pressed"), "true");
+  assert.ok(Math.abs(await privateHandList.evaluate((node) => node.scrollLeft) - userDefinedHandPosition) <= 1,
+    "reselecting a card must preserve the player's horizontal hand position");
   assert.equal(await page.locator('[data-game-action-menu="true"]').count(), 1,
     "card selection must keep the non-modal Actions tray open");
   assert.equal(await control(page, "discard").isEnabled(), true,
