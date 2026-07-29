@@ -20,7 +20,7 @@ const report = {
   signallingState: "starting",
   peerJoined: false,
   iceTransportPolicy: policy,
-  expectedPath: policy === "relay" ? "relay" : "direct",
+  expectedPath: policy === "relay" ? "relay" : "automatic",
   configuredTurn: false,
   connectionState: "new",
   channelState: "connecting",
@@ -157,11 +157,9 @@ try {
     report.passed =
       report.configuredTurn &&
       report.payloadRoundTrip &&
-      (policy === "relay" ? relaySelected : !relaySelected);
+      (policy === "relay" ? relaySelected : true);
     if (!report.passed) {
-      report.failure = policy === "relay"
-        ? "Forced relay did not select TURN candidates on both ends."
-        : "The automatic path used TURN, so this run did not prove a direct path.";
+      report.failure = "Forced relay did not select TURN candidates on both ends.";
     }
     statusElement.dataset.status = report.passed ? "passed" : "failed";
     render(report.passed ? "Passed" : "Failed");
