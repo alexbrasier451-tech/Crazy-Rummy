@@ -9,7 +9,7 @@ and forced-TURN runs must be completed before release
 
 ### 6.1 — End-to-end online composition
 
-- host-only, all-ready waiting-room start and locked three-to-six-seat
+- host-only, all-ready waiting-room start and locked two-to-six-seat
   membership;
 - private recipient-scoped match bootstraps and exact seat-proof checks;
 - configured lobby-to-host-star-to-sync-to-engine-to-screen composition;

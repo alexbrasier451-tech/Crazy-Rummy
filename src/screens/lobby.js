@@ -50,14 +50,14 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
     if (message) items.push(element("p", { className: "online-message", role: "status", text: message }));
 
     if (createOpen) {
-      const capacity = element("select", { id: "table-capacity", name: "capacity" }, [3, 4, 5, 6].map((count) => element("option", { value: count, text: `${count} seats` })));
+      const capacity = element("select", { id: "table-capacity", name: "capacity" }, [2, 3, 4, 5, 6].map((count) => element("option", { value: count, text: `${count} seats` })));
       const form = element("form", { className: "online-form", onSubmit: (event) => {
         event.preventDefault();
         const visibility = form.elements.namedItem("table-visibility")?.value ?? "OPEN";
         run("create", "createTable", { visibility, capacity: Number(capacity.value) });
       } },
       element("h2", { text: "Create a match" }),
-      element("label", { htmlFor: "table-capacity", text: "Seats (3–6)" }), capacity,
+      element("label", { htmlFor: "table-capacity", text: "Seats (2–6)" }), capacity,
       element("fieldset", { className: "online-choice" }, element("legend", { text: "Audience" }),
         visibilityChoice("OPEN", "Open table", "Publicly listed and joinable while a seat is available."),
         visibilityChoice("CLOSED", "Closed table", "Never listed publicly; players need a join code or link.")),

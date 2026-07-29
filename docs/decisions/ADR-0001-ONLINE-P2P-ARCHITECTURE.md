@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-07-29
-- **Scope:** Remote internet play for 3–6 players in a static mobile PWA
+- **Scope:** Remote internet play for 2–6 players in a static mobile PWA
 
 ## Context
 
@@ -41,7 +41,7 @@ but TURN introduces a provider account, bandwidth quota, and network metadata.
 
 - Remote Android Chrome and modern iPhone Safari.
 - Open and Closed tables with automatic online discovery.
-- Three to six players and private hands.
+- Two to six players and private hands.
 - Static, installable PWA in the Murder Darts app family.
 - No owner-administered machine or long-running process.
 - Strict zero operating cost with a hard failure at free-plan limits.
@@ -71,7 +71,7 @@ first release. It is rejected for the zero-budget P2P MVP.
 ### C. No backend, manual signalling exchange
 
 Players could exchange WebRTC offer/answer blobs through another messaging app.
-This has no automatic online list, is awkward for 3–6 phones, and still needs
+This has no automatic online list, is awkward for 2–6 phones, and still needs
 TURN on restrictive networks. It does not meet the stated lobby experience.
 
 ### D. Hosted relay for all game messages

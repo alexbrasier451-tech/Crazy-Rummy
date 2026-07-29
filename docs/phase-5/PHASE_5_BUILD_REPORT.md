@@ -17,10 +17,10 @@ with the Stage 5 build before release
   failed/closed snapshots; and
 - a configured runtime factory that owns one peer's provider lifecycle.
 
-### 5.2 — Three-to-six-player topology
+### 5.2 — Two-to-six-player topology
 
 - explicit host-and-spoke topology rather than a shared-room mesh;
-- five maximum host links and exactly one link per guest;
+- one-to-five host links and exactly one link per guest;
 - distinct transport, engine schema, and engine rules handshake fields;
 - seat-proof verification independent of untrusted provider metadata;
 - ordered per-link application events, gap buffering, heartbeats, stale

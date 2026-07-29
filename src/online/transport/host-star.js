@@ -19,8 +19,8 @@ export function createHostStarTransport({
   requireTransportIdentifier(matchId, "match ID");
   requireTransportIdentifier(localPlayerId, "local player ID");
   requireTransportIdentifier(hostPlayerId, "host player ID");
-  if (!Array.isArray(seatPlayerIds) || seatPlayerIds.length < 3 || seatPlayerIds.length > 6) {
-    throw invalid("Host-star topology requires three to six seats.");
+  if (!Array.isArray(seatPlayerIds) || seatPlayerIds.length < 2 || seatPlayerIds.length > 6) {
+    throw invalid("Host-star topology requires two to six seats.");
   }
   const seats = [...new Set(seatPlayerIds.map((id) => requireTransportIdentifier(id, "seat player ID")))];
   if (seats.length !== seatPlayerIds.length || !seats.includes(localPlayerId) || !seats.includes(hostPlayerId)) {

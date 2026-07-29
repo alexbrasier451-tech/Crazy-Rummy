@@ -105,7 +105,7 @@ apply visibility-aware backoff, and show an honest unavailable state rather
 than retrying aggressively.
 
 Client-side request protection is deliberately bounded: 8 KiB max envelope,
-3–6 capacity, 1–32 printable-character display names, 10–60 second lease,
+2–6 capacity, 1–32 printable-character display names, 10–60 second lease,
 and per-operation debounce/rate limits. It is not an abuse boundary; the host
 handler must repeat all validation and rate limiting because clients are
 modifiable. `createMeteredHostTableService` repeats the lease, seat-capacity,

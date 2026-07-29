@@ -9,7 +9,7 @@
 | Safe names | NFKC normalisation, whitespace collapse, control-character/link rejection, length bounds, and text-node rendering. |
 | Open/Closed separation | Only Open tables enter discovery. Closed lookup requires a 192-bit invite and a SHA-256-derived channel scope. |
 | Secret projection | Provider scopes and invite/room/seat secret fields are stripped before public/UI table snapshots. |
-| Capacity and races | Capacity is 3–6; conditional revisions reject stale/final-seat races. |
+| Capacity and races | Capacity is 2–6; conditional revisions reject stale/final-seat races. |
 | Idempotency | Mutations carry bounded request and idempotency IDs; the host caches accepted results for the lease window. |
 | Expiry | Presence and abandoned tables expire; Open advertisements carry authoritative expiry and stale entries are discarded. |
 | Rate and size bounds | Local operation debounce, provider rate/error mapping, bounded IDs/channels/names, and an 8 KiB request limit. Host validation repeats client validation. |

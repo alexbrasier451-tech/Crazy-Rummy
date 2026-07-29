@@ -7,7 +7,7 @@
 
 ## Product summary
 
-Crazy Rummy is an installable phone game for three to six remote players on
+Crazy Rummy is an installable phone game for two to six remote players on
 practical modern smartphones. Android Chrome is the primary QA target and
 modern iPhone Safari is a first-class supported target; the product does not
 promise every historic handset or abandoned browser. A complete match contains
@@ -34,7 +34,7 @@ own, patch, or administer a conventional server.
 
 - Let a player become visible as available and find other online players with
   very little setup.
-- Let three to six players create, join, and start a remote table from their
+- Let two to six players create, join, and start a remote table from their
   phones.
 - Preserve each player's private hand while presenting one clear shared table.
 - Make every legal draw, meld, lay-off, wild replacement, discard, and scoring
@@ -73,7 +73,7 @@ and forced-relay revalidation remains a release gate.
 
 ## Confirmed game boundary
 
-- Three to six players use one standard 52-card deck with no physical Jokers.
+- Two to six players use one standard 52-card deck with no physical Jokers.
 - Deal and play move clockwise; the dealer moves clockwise after every hand.
 - There are thirteen hands with Aces, Twos, Threes, Fours, Fives, Sixes,
   Sevens, Eights, Nines, Tens, Jacks, Queens, and Kings wild in that order.
@@ -121,7 +121,7 @@ book, and social graph are not assumed for the first release.
 - Let the creator choose **Open** or **Closed** audience. Open tables are
   publicly listed/joinable while seats are available, subject to host controls.
   Closed tables never appear publicly and require an unguessable invite/code.
-- Create a table, invite or accept players, and wait for three to six seats.
+- Create a table, invite or accept players, and wait for two to six seats.
 - Give the table owner explicit Start and Cancel controls.
 - Prevent incompatible app/rules versions from silently joining the same
   match.
@@ -301,7 +301,7 @@ undertone. Card rank and suit must never be conveyed by colour alone.
 
 The MVP is accepted when:
 
-1. Three to six real phones can find or join a compatible remote table using
+1. Two to six real phones can find or join a compatible remote table using
    the selected lobby model.
 2. All participants complete the supplied reference turn, wild-replacement,
    hand-scoring, reconnect, and full thirteen-hand fixtures with identical

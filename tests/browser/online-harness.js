@@ -92,12 +92,23 @@ async function fillOpenRoom() {
 
 async function startClosedJourney() {
   const host = sessionFor(players[0]);
-  const creation = await host.createTable({ visibility: "CLOSED", capacity: 3 });
+  const creation = await host.createTable({ visibility: "CLOSED", capacity: 2 });
   const guest = sessionFor(players[6]);
   await guest.goOnline();
   document.body.dataset.closedCode = creation.invite.code;
   renderLobby(players[6]);
   return creation.invite.code;
+}
+
+async function prepareTwoPlayerStart() {
+  const host = sessionFor(players[0]);
+  const guest = sessionFor(players[6]);
+  await host.refresh();
+  await host.setReady(true);
+  await guest.refresh();
+  await guest.setReady(true);
+  await host.refresh();
+  renderWaitingRoom(players[0]);
 }
 
 const host = sessionFor(players[0]);
@@ -109,5 +120,6 @@ renderLobby(players[1]);
 
 globalThis.onlineHarness = Object.freeze({
   fillOpenRoom,
-  startClosedJourney
+  startClosedJourney,
+  prepareTwoPlayerStart
 });

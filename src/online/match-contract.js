@@ -19,7 +19,7 @@ export function validateMatchBootstrap(value, { playerId, engineSchemaVersion = 
   requireTransportIdentifier(value.hostPlayerId, "host player ID");
   requireTransportIdentifier(value.localPlayerId, "local player ID");
   if (playerId && value.localPlayerId !== playerId) throw new TypeError("Match bootstrap is for another player.");
-  if (!Array.isArray(value.seats) || value.seats.length < 3 || value.seats.length > 6) throw new TypeError("Match bootstrap must contain three to six seats.");
+  if (!Array.isArray(value.seats) || value.seats.length < 2 || value.seats.length > 6) throw new TypeError("Match bootstrap must contain two to six seats.");
   const seatIds = new Set();
   const playerIds = new Set();
   for (const seat of value.seats) {

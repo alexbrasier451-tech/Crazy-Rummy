@@ -57,5 +57,5 @@ does not require anti-cheat.
 
 There are no remaining Phase 0 blockers. Phase 1 may begin. Cross-platform,
 background/foreground, interruption, reconnect, quota-exhaustion, and full
-three-to-six-phone coverage remain explicit later implementation and beta
+two-to-six-phone coverage remain explicit later implementation and beta
 gates; Phase 0 approval does not waive them.

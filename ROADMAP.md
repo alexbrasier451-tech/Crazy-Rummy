@@ -320,7 +320,7 @@ It is a developer/test harness, not a replacement same-room product.
 
 - Add go-online/offline, presence freshness, polling with visibility-aware
   backoff, invitations/open tables, and waiting room.
-- **Done when:** three to six devices can reliably assemble a compatible room
+- **Done when:** two to six devices can reliably assemble a compatible room
   and stale clients disappear.
 
 ### 4.4 — Complete lobby privacy and abuse checks
@@ -347,7 +347,7 @@ direct/forced-relay revalidation remains a release gate
 - **Done when:** two real phones connect on separate networks and show honest
   connection state.
 
-### 5.2 — Implement three-to-six-player topology
+### 5.2 — Implement two-to-six-player topology
 
 **Size:** M · **Depends on:** 5.1
 

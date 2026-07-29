@@ -24,7 +24,7 @@ credentials.
 
 ## Match formation
 
-Only the table host can start. Start requires three to six accepted seats, all
+Only the table host can start. Start requires two to six accepted seats, all
 ready at one matching table revision. The authority locks membership, creates
 a fresh match ID, room secret, per-seat recovery secrets and proofs, and
 pair-scoped signalling channels.

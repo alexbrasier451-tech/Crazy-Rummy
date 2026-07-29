@@ -1,5 +1,5 @@
 export const SCHEMA_VERSION = 2;
-export const RULES_VERSION = "crazy-rummy/1";
+export const RULES_VERSION = "crazy-rummy/2";
 export const SYSTEM_ACTOR_SEAT_ID = "system";
 
 export const SUITS = Object.freeze([
@@ -134,7 +134,7 @@ export const REJECTION = Object.freeze({
 
 export const DEFAULT_RULES = Object.freeze({
   rulesVersion: RULES_VERSION,
-  minimumPlayers: 3,
+  minimumPlayers: 2,
   maximumPlayers: 6,
   cardsPerPlayer: 7,
   handCount: 13,

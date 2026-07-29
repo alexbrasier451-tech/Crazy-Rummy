@@ -44,7 +44,7 @@ test("adapter uses public index only for Open tables and hashes Closed invite ch
     },
   });
   await provider.createTable({
-    host: { playerId: "host", displayName: "Host" }, visibility: "CLOSED", capacity: 3, protocolVersion: 1, rulesVersion: 1,
+    host: { playerId: "host", displayName: "Host" }, visibility: "CLOSED", capacity: 2, protocolVersion: 1, rulesVersion: 1,
   });
   assert.match(requests[0].channel, /^crazy-rummy\/v1\/closed\/[a-f0-9]{64}$/);
   assert.equal(requests[0].channel.includes("a".repeat(48)), false);
@@ -171,6 +171,52 @@ test("Closed invites stay off discovery and route lookup and join through the ha
   });
   assert.equal(joined.table.occupiedSeats, 2);
   await Promise.all([host.close(), guest.close()]);
+});
+
+test("host authority starts a match with two accepted, ready players", async () => {
+  const authority = createMeteredHostTableService({
+    requestRateLimitMs: 0,
+    leaseMs: 10_000,
+    createTableId: () => "table_two_player",
+    createSecret: (bytes) => "a".repeat(bytes * 2),
+  });
+  const request = (operation, payload, channel, requestId, expectedTableVersion = null) => ({
+    version: 1,
+    serviceModel: "host-authoritative-realtime-v1",
+    operation,
+    payload,
+    channel,
+    requestId,
+    mutation: { idempotencyKey: `${requestId}_once`, expectedTableVersion },
+  });
+  let table = (await authority.handle(request("createTable", {
+    host: { playerId: "host_two", displayName: "Host" },
+    visibility: "OPEN",
+    capacity: 2,
+    protocolVersion: "v1",
+    rulesVersion: "r1",
+  }, "crazy-rummy/v1/open-index", "create_two"))).table;
+  const channel = table.providerScope;
+  table = (await authority.handle(request("setReady", {
+    tableId: table.tableId, playerId: "host_two", ready: true
+  }, channel, "ready_host", table.revision))).table;
+  table = (await authority.handle(request("joinTable", {
+    tableId: table.tableId,
+    player: { playerId: "guest_two", displayName: "Guest" },
+    protocolVersion: "v1",
+    rulesVersion: "r1",
+  }, channel, "join_guest", table.revision))).table;
+  table = (await authority.handle(request("acceptTable", {
+    tableId: table.tableId, playerId: "guest_two"
+  }, channel, "accept_guest", table.revision))).table;
+  table = (await authority.handle(request("setReady", {
+    tableId: table.tableId, playerId: "guest_two", ready: true
+  }, channel, "ready_guest", table.revision))).table;
+  const started = await authority.handle(request("startMatch", {
+    tableId: table.tableId, hostId: "host_two"
+  }, channel, "start_two", table.revision));
+  assert.equal(started.table.status, "STARTED");
+  assert.equal(started.bootstrap.seats.length, 2);
 });
 
 test("host authority caches idempotent mutations and rejects stale or final-seat races", async () => {

@@ -373,7 +373,7 @@ occupancy, state, and rules summary. Handle **table full**, **already started**,
 **code expired/not found**, **removed by host**, and **name collision** without
 clearing identity or code.
 
-## 6. Waiting room (3–6 players)
+## 6. Waiting room (2–6 players)
 
 ```text
 ┌────────────────────────────────┐
@@ -405,7 +405,7 @@ Host capabilities:
 - choose a supported seat count before start;
 - remove a player with confirmation;
 - close the table with confirmation;
-- start only when 3–6 occupied seats satisfy confirmed readiness rules.
+- start only when 2–6 occupied seats satisfy confirmed readiness rules.
 
 Guest capabilities:
 
@@ -988,7 +988,7 @@ specific rule and repair.
 1. Splash identifies no saved player and opens Identity.
 2. Host enters a display name, saves, and lands in Lobby.
 3. Lobby snapshot loads with freshness; host chooses **Create a table**.
-4. Host sets 3–6 seats, chooses **Open table** (publicly listed/joinable subject
+4. Host sets 2–6 seats, chooses **Open table** (publicly listed/joinable subject
    to host controls) or **Closed table** (join/invite code only), selects the
    confirmed rules preset, reviews the audience, then submits once.
 5. Waiting room shows a shareable code/link, occupied/open seats, ready and
@@ -1047,7 +1047,7 @@ specific rule and repair.
   stale, offline, and failure states.
 - Open tables are publicly listed/joinable subject to host controls; Closed
   tables are absent from public results and use a join/invite code only.
-- A game cannot start outside 3–6 supported occupied seats.
+- A game cannot start outside 2–6 supported occupied seats.
 - Every turn communicates draw → optional play → discard and prevents
   duplicate/uncertain actions.
 - Meld composition, wild replacement, and turn rejection preserve actionable

@@ -109,8 +109,8 @@ function normalizeSeats(seats) {
     displayName: seatId,
     ready: true
   }));
-  if (!Array.isArray(source) || source.length < 3 || source.length > 6) {
-    throw new TypeError("The local fixture requires between three and six seats.");
+  if (!Array.isArray(source) || source.length < 2 || source.length > 6) {
+    throw new TypeError("The local fixture requires between two and six seats.");
   }
   return source.map((seat) => createSeat({ ...seat, ready: seat.ready ?? true }));
 }

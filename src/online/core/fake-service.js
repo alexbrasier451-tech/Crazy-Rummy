@@ -287,7 +287,7 @@ export function createFakeLobbyService(options = {}) {
       condition(table, input?.expectedRevision);
       if (table.hostPlayerId !== hostId) throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "Only the host can start this match.");
       if (table.status !== TABLE_STATUS.OPEN) throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "This match has already started.");
-      if (table.seats.length < 3 || table.seats.length > 6 || table.seats.some((seat) => seat.acceptedAt === null || !seat.ready)) throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "Three to six accepted, ready players are required.");
+      if (table.seats.length < 2 || table.seats.length > 6 || table.seats.some((seat) => seat.acceptedAt === null || !seat.ready)) throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "Two to six accepted, ready players are required.");
       const matchId = `match_${token(12)}`;
       const seatSecrets = Object.fromEntries(table.seats.map((seat) => [seat.playerId, token(16)]));
       const seatProofs = Object.fromEntries(table.seats.map((seat) => [seat.playerId, token(16)]));

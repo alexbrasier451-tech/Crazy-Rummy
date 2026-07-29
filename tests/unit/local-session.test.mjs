@@ -13,6 +13,19 @@ function parsed(storage, key) {
   return JSON.parse(storage.getItem(key)).value;
 }
 
+test("local sessions support a two-player fixture", () => {
+  const session = createLocalGameSession({
+    storage: createMemoryStorage(),
+    seats: [
+      { seatId: "north", playerId: "player-north", displayName: "North" },
+      { seatId: "south", playerId: "player-south", displayName: "South" },
+    ],
+  });
+  const state = session.getSnapshot().state;
+  assert.equal(state.lifecycle, LIFECYCLE.IN_PROGRESS);
+  assert.deepEqual(state.seatOrder, ["north", "south"]);
+});
+
 test("local sessions enrich commands, keep projections private, and expose accepted status", () => {
   const storage = createMemoryStorage();
   const session = createLocalGameSession({ storage });

@@ -12,7 +12,7 @@ claim that an action was accepted before the synchronisation authority assigns
 its sequence. Those responsibilities remain Phase 6.
 
 Every non-host has exactly one WebRTC data-channel link to the host. A host has
-between two and five links for a supported three-to-six-seat table. Guests
+between one and five links for a supported two-to-six-seat table. Guests
 never create a guest-to-guest edge; a guest message for another guest is
 forwarded through the host. This avoids treating Metered's shared-room mesh
 helper as though it were the accepted star topology.
@@ -59,7 +59,7 @@ The state cannot become `connected` until:
    injected verifier.
 
 The version fields are deliberately distinct. The current engine uses numeric
-schema `1` and rules version `crazy-rummy/1`; the lobby separately uses its
+schema `1` and rules version `crazy-rummy/2`; the lobby separately uses its
 Phase 4 compatibility vocabulary. The transport does not compare unlike
 versions.
 

@@ -67,6 +67,22 @@ test("lobby join, leave, readiness, and start are revisioned and replayable", ()
   assert.throws(() => reduceEvent(initial, { ...joined.event, sequence: 2 }), /REVISION_GAP/);
 });
 
+test("two ready players can start a game", () => {
+  let state = createLobbyState({ gameId: "two-player-game" });
+  for (const seatId of ["a", "b"]) {
+    state = apply(state, COMMAND_TYPE.JOIN_SEAT, seatId, {
+      seat: { seatId, playerId: `p-${seatId}`, displayName: seatId }
+    }).state;
+    state = apply(state, COMMAND_TYPE.SET_SEAT_READY, seatId, { ready: true }).state;
+  }
+  state = apply(state, COMMAND_TYPE.START_GAME, "a", {
+    initialDealerSeatId: initialDealerSeatIdFor("two-player-fixture", ["a", "b"]),
+    shuffleSeed: "two-player-fixture"
+  }).state;
+  assert.equal(state.lifecycle, LIFECYCLE.IN_PROGRESS);
+  assert.deepEqual(state.seatOrder, ["a", "b"]);
+});
+
 test("start, dealer discard, draw, meld, layoff, wild replacement, finish and discard obey phases", () => {
   let state = startedGame();
   assert.equal(state.lifecycle, LIFECYCLE.IN_PROGRESS);

@@ -24,7 +24,7 @@ at creation and does not change it after the first deal.
 
 | Topic | Status | Contract |
 | --- | --- | --- |
-| Players | Confirmed | 3–6 seated players |
+| Players | Confirmed | 2–6 seated players |
 | Pack | Confirmed | One standard 52-card pack; no physical jokers |
 | Direction | Confirmed | Clockwise |
 | Hand count | Confirmed | 13 hands, ending after the Kings hand |
@@ -197,7 +197,7 @@ result violates a rule or invariant.
 Required game commands are:
 
 - `JoinSeat` / `LeaveSeat` during lobby only; a started game has fixed seats.
-- `StartGame` with 3–6 ready occupied seats and a resolved initial dealer.
+- `StartGame` with 2–6 ready occupied seats and a resolved initial dealer.
 - `DealerInitialDiscard(cardId)`.
 - `DrawStock`.
 - `DrawDiscard`, which takes only the current top discard.
@@ -482,7 +482,7 @@ mandatory-final-discard invariant.
 ## 14. Online boundary
 
 Remote play requires players to discover which eligible peers are online,
-form or join a 3–6 player lobby, and observe presence changes. Presence may be
+form or join a 2–6 player lobby, and observe presence changes. Presence may be
 found by polling, but presence is advisory: it cannot decide turn legality,
 deal order, card ownership, or game outcome.
 

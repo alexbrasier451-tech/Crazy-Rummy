@@ -339,6 +339,19 @@ test("six-seat host-star creates five host links and one guest link, with no gue
   assert.equal(Object.values(topologies).every((topology) => topology.getSnapshot().state === PEER_STATE.CLOSED), true);
 });
 
+test("host-star topology accepts two seats", async () => {
+  const peerBus = createTopologyPeerBus();
+  const topology = createHostStarTransport({
+    matchId: MATCH,
+    localPlayerId: "host",
+    hostPlayerId: "host",
+    seatPlayerIds: ["host", "guest"],
+    createPeer(options) { return peerBus.create(options); },
+  });
+  assert.deepEqual(topology.getSnapshot().connections.map(({ playerId }) => playerId), ["guest"]);
+  await topology.close();
+});
+
 class ManagedClientBus {
   constructor() {
     this.clients = [];

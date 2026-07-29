@@ -30,7 +30,7 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
     const occupied = seats.length;
     const inviteCode = table.code ?? snapshot.room?.invite?.code ?? null;
     const state = !snapshot.online ? "offline" : snapshot.error ? "error" : "online";
-    const canStart = isHost && occupied >= 3 && seats.every((seat) => seat.ready && seat.acceptedAt !== null);
+    const canStart = isHost && occupied >= 2 && seats.every((seat) => seat.ready && seat.acceptedAt !== null);
     const localMarker = normalizePreferences(localSession?.getSnapshot?.().preferences).marker;
     const seatNodes = [...seats].map((seat, index) => {
       const current = (seat.playerId ?? seat.id) === localPlayerId;
@@ -63,7 +63,7 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
           actionButton({ label: "Cancel table", variant: "danger", pending: pending === "cancel", disabled: !snapshot.online || room.status !== "OPEN", onActivate: () => run("cancel", "cancelTable") })
         ] : room.status === "STARTED"
           ? actionButton({ label: "Join started match", variant: "primary", pending: enteringStartedMatch, onActivate: () => enterStartedMatch() })
-          : copy(occupied < 3 ? "Waiting for at least 3 players." : "Waiting for the host to start when every seat is ready."),
+          : copy(occupied < 2 ? "Waiting for at least 2 players." : "Waiting for the host to start when every seat is ready."),
         actionButton({ label: "Leave waiting room", variant: "danger", pending: pending === "leave", disabled: !snapshot.online, onActivate: () => run("leave", "leave") }),
         actionButton({ label: "Refresh room", variant: "quiet", disabled: !snapshot.online, pending: pending === "refresh", onActivate: () => run("refresh", "refresh") })
       )

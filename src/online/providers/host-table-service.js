@@ -81,7 +81,7 @@ export function createMeteredHostTableService({
     const requested = versions(input);
     const visibility = input.visibility;
     if (!["OPEN", "CLOSED"].includes(visibility)) throw invalid("visibility must be OPEN or CLOSED.");
-    if (!Number.isInteger(input.capacity) || input.capacity < 3 || input.capacity > 6) throw invalid("capacity must be 3-6.");
+    if (!Number.isInteger(input.capacity) || input.capacity < 2 || input.capacity > 6) throw invalid("capacity must be 2-6.");
     if (visibility === "CLOSED" && !invite(input.inviteCode)) throw invalid("Closed table invite code is invalid.");
     const tableId = createTableId();
     if (!ID.test(tableId) || tables.has(tableId)) throw invalid("Generated table ID is invalid or already in use.");
@@ -191,7 +191,7 @@ export function createMeteredHostTableService({
     const table = tableForMutation(envelope);
     conditional(table, envelope);
     if (requireId(envelope.payload.hostId) !== table.hostPlayerId) throw new MeteredProviderError("FORBIDDEN", "Only the host can start a match.");
-    if (table.status !== "OPEN" || table.seats.length < 3 || table.seats.some((seat) => seat.acceptedAt === null || !seat.ready)) throw new MeteredProviderError("FORBIDDEN", "Three to six accepted, ready players are required.");
+    if (table.status !== "OPEN" || table.seats.length < 2 || table.seats.some((seat) => seat.acceptedAt === null || !seat.ready)) throw new MeteredProviderError("FORBIDDEN", "Two to six accepted, ready players are required.");
     const seats = table.seats;
     const seatSecrets = Object.fromEntries(seats.map((seat) => [seat.playerId, createSecret(16)]));
     const seatProofs = Object.fromEntries(seats.map((seat) => [seat.playerId, createSecret(16)]));

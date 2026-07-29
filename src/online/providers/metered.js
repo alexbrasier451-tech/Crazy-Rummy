@@ -435,8 +435,8 @@ function validateOperation(operation, input) {
     if (id !== undefined && !SAFE_ID.test(id)) throw invalidRequest("Lobby IDs must be 1-128 safe characters.");
   }
   if (input.visibility !== undefined && !["OPEN", "CLOSED"].includes(input.visibility)) throw invalidRequest("visibility must be OPEN or CLOSED.");
-  if (input.capacity !== undefined && (!Number.isInteger(input.capacity) || input.capacity < 3 || input.capacity > 6)) {
-    throw invalidRequest("capacity must be between 3 and 6.");
+  if (input.capacity !== undefined && (!Number.isInteger(input.capacity) || input.capacity < 2 || input.capacity > 6)) {
+    throw invalidRequest("capacity must be between 2 and 6.");
   }
   if (input.ready !== undefined && typeof input.ready !== "boolean") throw invalidRequest("ready must be boolean.");
   if (operation === "lookupTable" && typeof input.code !== "string") throw invalidRequest("lookupTable requires an invite code.");

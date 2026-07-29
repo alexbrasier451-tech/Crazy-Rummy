@@ -88,7 +88,7 @@ online-player list is not possible with a static browser app alone.
 
 Lobby discovery and online table formation use the Phase 4 provider-neutral
 session and Metered adapter when deployment configuration is present. Phase 5
-adds pair-scoped WebRTC links, a three-to-six-seat host star, per-seat
+adds pair-scoped WebRTC links, a two-to-six-seat host star, per-seat
 authoritative projections, reliable command/event delivery, and recovery
 policy. Phase 6 locks ready rooms into private matches, composes those links
 with host authority and player-scoped game screens, persists recoverable match

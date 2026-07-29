@@ -46,12 +46,15 @@ test("the initial deal gives the dealer eight cards and preserves the stock orde
 
 test("rules are immutable and retain the fixed hand schedule and score semantics", () => {
   assert.equal(CANONICAL_RULES.handCount, 13);
+  assert.equal(CANONICAL_RULES.minimumPlayers, 2);
+  assert.equal(CANONICAL_RULES.maximumPlayers, 6);
   assert.equal(wildRankForHand(6), "6");
   assert.equal(handForIndex(13).wildRank, "K");
   assert.equal(naturalCardValue("A"), 1);
   assert.equal(naturalCardValue("Q"), 10);
   assert.equal(Object.isFrozen(createRules()), true);
   assert.throws(() => createRules({ handCount: 12 }), /fixed thirteen-hand schedule/);
+  assert.throws(() => createRules({ minimumPlayers: 1 }), /between two and six players/);
 });
 
 test("lobby state has the canonical frozen shape and clone helpers do not alias it", () => {

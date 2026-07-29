@@ -33,9 +33,9 @@ export function createRules(overrides = {}) {
     throw new RangeError(`Unsupported rules version: ${rules.rulesVersion}`);
   }
   if (!Number.isInteger(rules.minimumPlayers) || !Number.isInteger(rules.maximumPlayers)
-    || rules.minimumPlayers < 3 || rules.maximumPlayers > 6
+    || rules.minimumPlayers < 2 || rules.maximumPlayers > 6
     || rules.minimumPlayers > rules.maximumPlayers) {
-    throw new RangeError("Rules must allow between three and six players.");
+    throw new RangeError("Rules must allow between two and six players.");
   }
   if (rules.cardsPerPlayer !== 7 || rules.handCount !== HAND_SCHEDULE.length) {
     throw new RangeError("Crazy Rummy uses seven base cards and the fixed thirteen-hand schedule.");

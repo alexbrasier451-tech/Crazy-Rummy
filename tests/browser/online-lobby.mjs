@@ -19,6 +19,12 @@ try {
   });
 
   await page.getByRole("heading", { name: "Open tables" }).waitFor();
+  await page.getByRole("button", { name: "Create a table" }).click();
+  assert.deepEqual(
+    await page.getByLabel("Seats (2–6)").locator("option").allTextContents(),
+    ["2 seats", "3 seats", "4 seats", "5 seats", "6 seats"]
+  );
+  await page.getByRole("button", { name: "Create a table" }).click();
   await page.getByRole("button", { name: "Preview table" }).click();
   await page.getByRole("button", { name: "Join table" }).click();
   await page.getByRole("heading", { level: 1, name: "Waiting room" }).waitFor();
@@ -45,6 +51,9 @@ try {
     await page.getByText(/Code /).textContent().then((text) => text.includes(closedCode)),
     true
   );
+  await page.evaluate(() => globalThis.onlineHarness.prepareTwoPlayerStart());
+  await page.getByText("2 of 2 players").waitFor();
+  assert.equal(await page.getByRole("button", { name: "Start match" }).isEnabled(), true);
 
   const overflow = await page.evaluate(() =>
     document.documentElement.scrollWidth > document.documentElement.clientWidth
@@ -56,4 +65,4 @@ try {
   await testServer.close();
 }
 
-console.log("Stage 4 Open/Closed six-seat lobby browser acceptance passed.");
+console.log("Stage 4 Open/Closed two-to-six-seat lobby browser acceptance passed.");

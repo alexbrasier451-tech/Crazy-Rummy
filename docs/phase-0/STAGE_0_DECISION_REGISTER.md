@@ -18,7 +18,7 @@ document draft, but it is not authority for Phase 1 production code.
 | C-03 | Players are remote, not merely in the same room. | Bluetooth, local-network-only, pass-and-play, and proximity discovery do not satisfy the product. |
 | C-04 | Players should poll to find players who are online. | Phase 0 must define short-lived presence, lobby polling, invitations/tables, expiry, and backoff. |
 | C-05 | The owner does not have a server. | Do not assume a conventional self-hosted backend; compare no-admin managed/serverless dependencies and the strict no-backend fallback honestly. |
-| C-06 | Three to six players, one 52-card pack, no physical Jokers, clockwise play/deal, and thirteen wild-rank hands. | These are fixed engine boundaries unless the owner reopens them. |
+| C-06 | Two to six players, one 52-card pack, no physical Jokers, clockwise play/deal, and thirteen wild-rank hands. | These are fixed engine boundaries unless the owner reopens them. |
 | C-07 | Dealer receives eight, opens only by discarding, and does not draw or meld on that first turn. | Model a distinct `dealerOpeningDiscard` turn phase. |
 | C-08 | A final discard is required to go out. | The engine may not accept a table action that leaves zero cards. |
 | C-09 | The table creator chooses Open or Closed. Open tables are publicly listed; Closed tables require an unguessable invite/code and are not listed. | Lobby visibility is a per-table choice rather than one fixed audience for the whole product. |

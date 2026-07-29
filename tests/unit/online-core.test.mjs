@@ -71,6 +71,28 @@ test("conditional seats, acceptance, readiness, leave, and host cancellation pre
   assert.equal((await service.listTables(versions)).length, 0);
 });
 
+test("two accepted, ready players can start an online match", async () => {
+  const service = createFakeLobbyService(fakeOptions({ value: 1_000 }));
+  let table = (await service.createTable({ host, visibility: "OPEN", capacity: 2, ...versions })).table;
+  table = (await service.setReady({
+    tableId: table.tableId, playerId: host.playerId, ready: true, expectedRevision: table.revision
+  })).table;
+  table = (await service.joinTable({
+    tableId: table.tableId, player: guestOne, ...versions, expectedRevision: table.revision
+  })).table;
+  table = (await service.acceptTable({
+    tableId: table.tableId, playerId: guestOne.playerId, expectedRevision: table.revision
+  })).table;
+  table = (await service.setReady({
+    tableId: table.tableId, playerId: guestOne.playerId, ready: true, expectedRevision: table.revision
+  })).table;
+  const started = await service.startMatch({
+    tableId: table.tableId, hostId: host.playerId, expectedRevision: table.revision
+  });
+  assert.equal(started.table.status, "STARTED");
+  assert.equal(started.bootstrap.seats.length, 2);
+});
+
 function createScheduler() {
   const tasks = [];
   return {

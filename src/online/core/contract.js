@@ -2,7 +2,7 @@ import { ONLINE_ERROR, OnlineLobbyError } from "./errors.js";
 
 export const TABLE_VISIBILITY = Object.freeze({ OPEN: "OPEN", CLOSED: "CLOSED" });
 export const TABLE_STATUS = Object.freeze({ OPEN: "OPEN", STARTING: "STARTING", STARTED: "STARTED", CANCELLED: "CANCELLED" });
-export const MIN_TABLE_CAPACITY = 3;
+export const MIN_TABLE_CAPACITY = 2;
 export const MAX_TABLE_CAPACITY = 6;
 export const HEARTBEAT_MS = 15_000;
 export const LEASE_MS = 45_000;
@@ -60,7 +60,7 @@ export function assertVersion(value, label = "version") {
 
 export function assertCapacity(value) {
   if (!Number.isInteger(value) || value < MIN_TABLE_CAPACITY || value > MAX_TABLE_CAPACITY) {
-    throw new OnlineLobbyError(ONLINE_ERROR.INVALID_INPUT, "Tables support from three to six players.");
+    throw new OnlineLobbyError(ONLINE_ERROR.INVALID_INPUT, "Tables support from two to six players.");
   }
   return value;
 }

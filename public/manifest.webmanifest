@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Crazy Rummy",
   "short_name": "Crazy Rummy",
-  "description": "A phone-first, thirteen-hand Crazy Rummy card game for three to six remote players.",
+  "description": "A phone-first, thirteen-hand Crazy Rummy card game for two to six remote players.",
   "lang": "en-GB",
   "dir": "ltr",
   "start_url": "./#/lobby?source=installed",
