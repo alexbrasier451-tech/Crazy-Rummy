@@ -147,6 +147,31 @@ test("disabled lobby auto-refresh leaves explicit manual refresh available", asy
   session.dispose();
 });
 
+test("manual refresh replaces the pending automatic poll", async () => {
+  const scheduler = createScheduler();
+  const session = createOnlineLobbySession({
+    service: createFakeLobbyService(fakeOptions({ value: 0 })),
+    player: host,
+    ...versions,
+    scheduler,
+    clock: () => 0,
+    jitterRatio: 0,
+  });
+
+  await session.goOnline();
+  const pendingPoll = scheduler.tasks.find((task) => !task.cancelled && !task.ran);
+  assert.ok(pendingPoll);
+
+  await session.refresh();
+
+  assert.equal(pendingPoll.cancelled, true);
+  assert.equal(
+    scheduler.tasks.filter((task) => !task.cancelled && !task.ran).length,
+    1,
+  );
+  session.dispose();
+});
+
 function deferred() {
   let resolve;
   const promise = new Promise((next) => { resolve = next; });

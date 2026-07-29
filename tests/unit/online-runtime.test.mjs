@@ -7,7 +7,10 @@ import {
   SIGNAL_KIND,
   createSignallingEnvelope,
 } from "../../src/online/index.js";
-import { createConfiguredPeerConnection } from "../../src/online/runtime.js";
+import {
+  createConfiguredOnlineLobbySession,
+  createConfiguredPeerConnection,
+} from "../../src/online/runtime.js";
 
 class FailingSignallingClient {
   static latest = null;
@@ -58,6 +61,33 @@ class WorkingSignallingClient extends FailingSignallingClient {
     this.handlers.get("connected")?.({ iceServers: [] });
   }
 }
+
+class LobbySignallingClient extends WorkingSignallingClient {
+  async subscribe() {
+    assert.equal(this.state, "connected");
+  }
+  async unsubscribe() {}
+  async publish() {
+    assert.equal(this.state, "connected");
+  }
+}
+
+test("configured lobby refreshes do not trip a second client-side read limit", async () => {
+  const session = createConfiguredOnlineLobbySession({
+    player: { playerId: "runtime-lobby-player", displayName: "Runtime lobby" },
+    publicKey: "pk_live_test",
+    SignallingClientClass: LobbySignallingClient,
+    autoRefresh: false,
+    discoveryWindowMs: 50,
+  });
+
+  await session.goOnline();
+  await session.refresh();
+
+  assert.equal(session.getSnapshot().error, null);
+  assert.equal(session.getSnapshot().presence.status, "online");
+  session.dispose();
+});
 
 class PassiveRtcConnection {
   constructor() {

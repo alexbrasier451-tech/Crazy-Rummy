@@ -234,6 +234,10 @@ export function createMeteredHostTableService({
   }
 
   function rateLimit(operation, installationId) {
+    // Heartbeats are always handled by the caller's own in-memory authority
+    // before anything is published. Rate-limiting that local read path makes
+    // the normal refresh loop reject itself without protecting a remote host.
+    if (operation === "heartbeat") return;
     const key = `${installationId}:${operation}`;
     const previous = lastRequestAt.get(key);
     const current = currentTime();

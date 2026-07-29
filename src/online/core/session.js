@@ -281,9 +281,12 @@ export function createOnlineLobbySession(options = {}) {
       } finally { notify(); }
     },
     async refresh() {
-      const result = await refreshCycle();
-      schedulePoll();
-      return result;
+      clearTimer();
+      try {
+        return await refreshCycle();
+      } finally {
+        schedulePoll();
+      }
     },
     async syncAutoRefresh() {
       assertActive();

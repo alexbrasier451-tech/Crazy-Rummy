@@ -61,6 +61,10 @@ export function createConfiguredOnlineLobbySession({
       channelPrefix,
       openIndexChannel: `${channelPrefix}/open-index`,
       leaseTtlMs: leaseMs,
+      // Polling and explicit refresh are already ordered by the lobby session.
+      // Applying a second client-side limit here can make the configured
+      // client reject its own jittered heartbeat/discovery cycle.
+      rateLimitMs: { heartbeat: 0, listTables: 0 },
       ...(origin?.startsWith("https://") ? { origin } : {})
     }
   });
