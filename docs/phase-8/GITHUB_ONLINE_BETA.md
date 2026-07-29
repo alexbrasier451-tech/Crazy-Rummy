@@ -18,7 +18,7 @@ revocable and restricted to the beta:
 
 - exact origin `https://alexbrasier451-tech.github.io`;
 - minimum Publish, Subscribe, Presence, and Send actions;
-- only the `crazy-rummy/v1/*` application channels;
+- only the `crazy-rummy/v1/**` application channels;
 - provider-injected short-lived TURN configuration;
 - hard-capped free plan, no overage, and no auto-recharge.
 
