@@ -1,7 +1,7 @@
 # GitHub Pages Online Beta
 
-**Status:** GitHub source and deployment workflow prepared; restricted beta
-provider key and live-phone evidence remain external gates  
+**Status:** Restricted beta provider key configured; hosted beta validation is
+in progress and live-phone evidence remains an external gate  
 **Target:** <https://alexbrasier451-tech.github.io/Crazy-Rummy/>
 
 ## Source and deployment boundary
@@ -10,6 +10,13 @@ The complete application is published through a review branch that retains the
 existing Phase 0 probe history. The Pages workflow builds Vite output for the
 project path `/Crazy-Rummy/`, verifies the scoped PWA artifact, uploads only
 `dist/`, and deploys through GitHub's `github-pages` environment.
+
+Metered remains the discovery and signalling route only. Gameplay stays on the
+host-star WebRTC data-channel topology, preferring direct peer-to-peer ICE
+candidates and using provider-injected TURN credentials only when a direct path
+cannot be established. The client connects its Metered signalling session
+before lobby subscriptions and closes that session when the online service is
+disposed.
 
 The deployment workflow never accepts an administrative key, payment
 credential, private key, or long-lived TURN credential. The browser-visible
