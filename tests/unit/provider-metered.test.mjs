@@ -210,8 +210,12 @@ test("realtime bridge collects only Open public advertisements and unsubscribes 
   await bridge.advertiseTable({ tableId: "open_1", visibility: "OPEN", providerScope: "hidden", inviteCode: "hidden" });
   const listed = await bridge.request({ requestId: "discover", operation: "listTables", channel: "crazy-rummy/v1/open-index" }, { timeoutMs: 500 });
   assert.deepEqual(listed.value.tables, []);
+  assert.equal(bridge.client.connectCalls, 1);
+  assert.equal(bridge.client.calls[0], "connect");
+  assert.ok(bridge.client.calls.indexOf("connect") < bridge.client.calls.indexOf("subscribe:crazy-rummy/v1/open-index"));
   await bridge.close();
   assert.ok(bridge.client.unsubscribed.includes("crazy-rummy/v1/open-index"));
+  assert.equal(bridge.client.state, "closed");
 });
 
 class FakeSignallingClient {
@@ -222,19 +226,43 @@ class FakeSignallingClient {
     this.handlers = new Map();
     this.unsubscribed = [];
     this.published = [];
+    this.calls = [];
+    this.connectCalls = 0;
+    this.state = "idle";
     this.peerId = `fake-peer-${FakeSignallingClient.instances.length + 1}`;
     FakeSignallingClient.instances.push(this);
   }
   on(event, callback) { this.handlers.set(event, callback); return this; }
   off(event, callback) { if (this.handlers.get(event) === callback) this.handlers.delete(event); return this; }
-  async subscribe() {}
-  async unsubscribe(channel) { this.unsubscribed.push(channel); }
+  async connect() {
+    this.connectCalls += 1;
+    this.calls.push("connect");
+    this.state = "connected";
+  }
+  assertConnected(operation) {
+    if (this.state !== "connected") throw new Error(`${operation} before connect`);
+  }
+  async subscribe(channel) {
+    this.assertConnected("subscribe");
+    this.calls.push(`subscribe:${channel}`);
+  }
+  async unsubscribe(channel) {
+    this.assertConnected("unsubscribe");
+    this.unsubscribed.push(channel);
+  }
   async publish(channel, data) {
+    this.assertConnected("publish");
+    this.calls.push(`publish:${channel}`);
     this.published.push({ channel, data });
     for (const client of FakeSignallingClient.instances) client.handlers.get("message")?.({ channel, from: this.peerId, data });
   }
   async send(peerId, data) {
+    this.assertConnected("send");
     const target = FakeSignallingClient.instances.find((client) => client.peerId === peerId);
     target?.handlers.get("direct")?.({ from: this.peerId, data });
+  }
+  async close() {
+    this.calls.push("close");
+    this.state = "closed";
   }
 }

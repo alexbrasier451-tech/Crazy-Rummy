@@ -223,15 +223,31 @@ export function createMeteredRealtimeRequestClient({
   const client = new SignallingClient({ apiKey: publicKey });
   const subscribed = new Set();
   const pending = new Map();
+  let connectPromise = null;
   let closed = false;
   const onMessage = (event) => { void receive(event.data, event.channel, event.from); };
   const onDirect = (event) => { void receive(event.data, event.data?.channel, event.from); };
   client.on("message", onMessage);
   client.on("direct", onDirect);
 
+  async function ensureConnected() {
+    if (closed) throw new MeteredProviderError("METERED_OFFLINE", "Metered client is closed.", { retryable: true });
+    if (typeof client.connect !== "function" || client.state === "connected") return;
+    if (!connectPromise) {
+      connectPromise = Promise.resolve()
+        .then(() => client.connect())
+        .catch((error) => {
+          connectPromise = null;
+          throw error;
+        });
+    }
+    await connectPromise;
+  }
+
   async function ensureSubscribed(channel) {
     if (closed) throw new MeteredProviderError("METERED_OFFLINE", "Metered client is closed.", { retryable: true });
     if (!subscribed.has(channel)) {
+      await ensureConnected();
       await client.subscribe(channel, { includeSenderMetadata: false });
       subscribed.add(channel);
     }
@@ -366,6 +382,7 @@ export function createMeteredRealtimeRequestClient({
       subscribed.clear();
       for (const entry of pending.values()) entry.reject(new MeteredProviderError("METERED_OFFLINE", "Metered client closed.", { retryable: true }));
       pending.clear();
+      await client.close?.();
     },
   });
 }
