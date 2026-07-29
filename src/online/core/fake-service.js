@@ -277,7 +277,6 @@ export function createFakeLobbyService(options = {}) {
       const hostId = assertPlayerId(input?.hostId);
       if (table.hostPlayerId !== hostId) throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "Only the host can renew this table.");
       table.leaseExpiresAt = now() + leaseMs;
-      table.revision += 1;
       return { table: copy(roomTable(table)) };
     },
 

@@ -132,7 +132,18 @@ test("host creates, advertises, conditionally seats, and expires a transient Ope
     tableId: created.table.tableId, player: { playerId: "guest_user", displayName: "Guest" }, protocolVersion: "v1", rulesVersion: "r1", expectedRevision: 1,
   });
   assert.equal(joined.table.revision, 2);
-  const accepted = await host.acceptTable({ tableId: created.table.tableId, playerId: "guest_user", expectedRevision: 2 });
+  const renewed = await host.renewLease({
+    tableId: created.table.tableId,
+    hostId: "host_user",
+    expectedTableVersion: created.table.revision,
+  });
+  assert.equal(renewed.table.revision, joined.table.revision);
+  assert.equal(renewed.table.occupiedSeats, 2);
+  const accepted = await host.acceptTable({
+    tableId: created.table.tableId,
+    playerId: "guest_user",
+    expectedRevision: renewed.table.revision,
+  });
   assert.equal(accepted.table.seats.find((seat) => seat.playerId === "guest_user").acceptedAt, time);
   await assert.rejects(
     guest.setReady({ tableId: created.table.tableId, playerId: "guest_user", ready: true, expectedRevision: 1 }),

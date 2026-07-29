@@ -180,10 +180,8 @@ export function createMeteredHostTableService({
 
   function renewLease(envelope) {
     const table = tableForMutation(envelope);
-    conditional(table, envelope);
     if (requireId(envelope.payload.hostId) !== table.hostPlayerId) throw new MeteredProviderError("FORBIDDEN", "Only the host can renew a table lease.");
     table.leaseExpiresAt = currentTime() + leaseMs;
-    table.revision += 1;
     return { table: projection(table, { room: true }) };
   }
 

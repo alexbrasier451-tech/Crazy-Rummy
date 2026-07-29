@@ -39,6 +39,20 @@ test("fake authority expires presence and unrenewed table leases at authoritativ
   assert.equal((await service.listTables(versions)).length, 0);
 });
 
+test("lease renewal extends availability without changing the table revision", async () => {
+  const now = { value: 0 };
+  const service = createFakeLobbyService(fakeOptions(now));
+  const created = await service.createTable({ host, visibility: "OPEN", capacity: 2, ...versions });
+  now.value = 20_000;
+  const renewed = await service.renewLease({
+    tableId: created.table.tableId,
+    hostId: host.playerId,
+    expectedRevision: created.table.revision - 1,
+  });
+  assert.equal(renewed.table.revision, created.table.revision);
+  assert.equal(renewed.table.leaseExpiresAt, 65_000);
+});
+
 test("Open discovery hides Closed tables and only returns compatible protocol/rules", async () => {
   const now = { value: 0 };
   const service = createFakeLobbyService(fakeOptions(now));
