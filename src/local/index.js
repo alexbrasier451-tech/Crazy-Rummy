@@ -360,7 +360,7 @@ export function createLocalGameSession(options = {}) {
       } else if (state.hand.phase === "AWAITING_DRAW") {
         accepted(COMMAND_TYPE.DRAW_STOCK, state.hand.activeSeatId);
       } else if (state.hand.phase === "TABLE_PLAY") {
-        accepted(COMMAND_TYPE.FINISH_TABLE_PLAY, state.hand.activeSeatId);
+        accepted(COMMAND_TYPE.DISCARD, state.hand.activeSeatId, { cardId: state.hand.drawnCardId });
       } else if (state.hand.phase === "AWAITING_DISCARD") {
         accepted(COMMAND_TYPE.DISCARD, state.hand.activeSeatId, { cardId: state.hand.drawnCardId });
       } else if (state.hand.phase === "HAND_COMPLETE") {

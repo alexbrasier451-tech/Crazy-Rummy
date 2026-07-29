@@ -43,7 +43,7 @@ function completeThreeSeatState() {
   while (state.lifecycle !== LIFECYCLE.COMPLETE) {
     if (state.hand.phase === "DEALER_INITIAL_DISCARD") run(COMMAND_TYPE.DEALER_INITIAL_DISCARD, state.hand.dealerSeatId, { cardId: state.hand.handsBySeat[state.hand.dealerSeatId][0] });
     else if (state.hand.phase === "AWAITING_DRAW") run(COMMAND_TYPE.DRAW_STOCK, state.hand.activeSeatId);
-    else if (state.hand.phase === "TABLE_PLAY") run(COMMAND_TYPE.FINISH_TABLE_PLAY, state.hand.activeSeatId);
+    else if (state.hand.phase === "TABLE_PLAY") run(COMMAND_TYPE.DISCARD, state.hand.activeSeatId, { cardId: state.hand.drawnCardId });
     else if (state.hand.phase === "AWAITING_DISCARD") run(COMMAND_TYPE.DISCARD, state.hand.activeSeatId, { cardId: state.hand.drawnCardId });
     else if (state.hand.phase === "HAND_COMPLETE") {
       for (const seatId of state.seatOrder) {

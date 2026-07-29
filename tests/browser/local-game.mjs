@@ -169,7 +169,7 @@ async function playOrdinaryTurnsUntilHandComplete(page) {
       continue;
     }
     if (currentPhase === "TABLE_PLAY") {
-      await expectOneAcceptedRevision(page, () => takeAction(page, "finish-table-play"), "table finish");
+      await discardFirstPrivateCard(page, "ordinary discard from table play");
       continue;
     }
     if (currentPhase === "AWAITING_DISCARD") {
@@ -346,10 +346,13 @@ try {
   );
   await refreshPreservesAcceptedState(page, "TABLE_PLAY", "accepted opening meld");
 
-  await expectOneAcceptedRevision(page, () => takeAction(page, "finish-table-play"), "finish table play");
-  assert.equal(await phase(page), "AWAITING_DISCARD");
-  await refreshPreservesAcceptedState(page, "AWAITING_DISCARD", "awaiting discard");
-  await discardFirstPrivateCard(page, "first turn discard");
+  await openActions(page);
+  assert.equal(await control(page, "finish-table-play").count(), 0,
+    "the current UI must not require a redundant finish-table-play action");
+  assert.equal(await control(page, "discard").count(), 1,
+    "table play must offer discard as the direct end-turn action");
+  await control(page, "close-actions").click();
+  await discardFirstPrivateCard(page, "first turn atomic discard");
 
   await playOrdinaryTurnsUntilHandComplete(page);
   await page.waitForURL(/#\/hand-result$/);

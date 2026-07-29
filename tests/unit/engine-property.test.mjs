@@ -79,11 +79,6 @@ test("fresh generated seeded games conserve the single pack through a complete o
     assertStateInvariants(state);
     assert.equal(state.hand.phase, PHASE.TABLE_PLAY);
 
-    const finish = accepted(state, command(state, COMMAND_TYPE.FINISH_TABLE_PLAY, actorSeatId, `finish-${seed}`));
-    state = finish.state;
-    assertStateInvariants(state);
-    assert.equal(state.hand.phase, PHASE.AWAITING_DISCARD);
-
     const discard = accepted(state, command(state, COMMAND_TYPE.DISCARD, actorSeatId, `discard-${seed}`, {
       cardId: state.hand.handsBySeat[actorSeatId][0]
     }));
@@ -100,7 +95,6 @@ test("fresh generated seeded games conserve the single pack through a complete o
       start.event,
       dealerDiscard.event,
       draw.event,
-      finish.event,
       discard.event
     ]);
     assert.deepEqual(replayed, state);

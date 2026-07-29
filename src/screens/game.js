@@ -792,6 +792,28 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       ui.sheet = null;
       void execute(type, payload, options);
     };
+    const discardControl = (opening = false) => {
+      const quickConfirm = !opening && preferences().confirmDiscard === "Quick confirm";
+      return commandButton(
+        opening
+          ? "Choose opening discard"
+          : (quickConfirm ? "Discard selected card" : "Discard to end turn…"),
+        () => {
+          if (quickConfirm) {
+            ui.sheet = null;
+            quickDiscard(cards);
+            return;
+          }
+          if (!selectedOrAnnounce(cards, "Select exactly one card to discard.")) return;
+          openActionSubsheet("discard");
+        },
+        {
+          variant: "danger",
+          disabled: gameplayIsBlocked() || selectedCount !== 1,
+          name: "discard"
+        }
+      );
+    };
     if (!mine) {
       controls.push(copy(
         `No turn action is available on this device. ${nameForSeat(view, hand.activeSeatId)} is taking their turn. `
@@ -818,7 +840,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           if (!selectedOrAnnounce(cards, "Select the natural replacement card first.")) return;
           openActionSubsheet("replace");
         }, { disabled: gameplayIsBlocked() || selectedCount < 1, name: "replace-wild" }),
-        commandButton("Finish table play", () => runFromMenu("FINISH_TABLE_PLAY"), { disabled: gameplayIsBlocked(), name: "finish-table-play" })
+        discardControl()
       );
     } else if (copyForPhase.step === "discard") {
       const opening = hand.phase === "DEALER_INITIAL_DISCARD";

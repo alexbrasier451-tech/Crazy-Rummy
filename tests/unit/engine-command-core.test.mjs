@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { COMMAND_TYPE, LIFECYCLE, PHASE, REJECTION, SCHEMA_VERSION } from "../../src/engine/constants.js";
+import { COMMAND_TYPE, EVENT_TYPE, LIFECYCLE, PHASE, REJECTION, SCHEMA_VERSION } from "../../src/engine/constants.js";
 import { applyCommand, executeCommand } from "../../src/engine/commands.js";
 import { reduceEvent, replayEvents } from "../../src/engine/events.js";
 import { createLobbyState } from "../../src/engine/state.js";
@@ -83,7 +83,7 @@ test("two ready players can start a game", () => {
   assert.deepEqual(state.seatOrder, ["a", "b"]);
 });
 
-test("start, dealer discard, draw, meld, layoff, wild replacement, finish and discard obey phases", () => {
+test("a normal discard ends table play atomically in one accepted revision", () => {
   let state = startedGame();
   assert.equal(state.lifecycle, LIFECYCLE.IN_PROGRESS);
   assert.equal(state.hand.phase, PHASE.DEALER_INITIAL_DISCARD);
@@ -106,9 +106,13 @@ test("start, dealer discard, draw, meld, layoff, wild replacement, finish and di
     }).state;
     assert.equal(state.hand.openedBySeat[actor], true);
   }
-  state = apply(state, COMMAND_TYPE.FINISH_TABLE_PLAY, actor).state;
   const discardCard = state.hand.handsBySeat[actor][0];
-  state = apply(state, COMMAND_TYPE.DISCARD, actor, { cardId: discardCard }).state;
+  const beforeDiscardRevision = state.revision;
+  const discard = apply(state, COMMAND_TYPE.DISCARD, actor, { cardId: discardCard });
+  assert.equal(discard.revision, beforeDiscardRevision + 1);
+  assert.equal(discard.events.length, 1);
+  assert.equal(discard.event.type, EVENT_TYPE.CARD_DISCARDED);
+  state = discard.state;
   assert.ok([PHASE.AWAITING_DRAW, PHASE.HAND_COMPLETE].includes(state.hand.phase));
 });
 

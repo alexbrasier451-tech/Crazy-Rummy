@@ -48,7 +48,7 @@ export function phaseCopy(phase, isLocalTurn) {
         : { title: "Waiting for draw", detail: "Another player is choosing a draw.", step: "wait" };
     case "TABLE_PLAY":
       return mine
-        ? { title: "Your turn · table play", detail: "Make a meld, add to the table, replace a wild, then finish table play.", step: "play" }
+        ? { title: "Your turn · table play", detail: "Make any table plays, then discard one card to end your turn.", step: "play" }
         : { title: "Table play", detail: "Another player is deciding what to play.", step: "wait" };
     case "AWAITING_DISCARD":
       return mine

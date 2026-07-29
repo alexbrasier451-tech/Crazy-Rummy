@@ -215,7 +215,9 @@ test("a thirteen-hand online match converges through delay, reorder, loss, dupli
         submit(hand.activeSeatId, COMMAND_TYPE.DRAW_STOCK);
         break;
       case PHASE.TABLE_PLAY:
-        submit(hand.activeSeatId, COMMAND_TYPE.FINISH_TABLE_PLAY);
+        submit(hand.activeSeatId, COMMAND_TYPE.DISCARD, {
+          cardId: hand.drawnCardId
+        });
         break;
       case PHASE.AWAITING_DISCARD:
         submit(hand.activeSeatId, COMMAND_TYPE.DISCARD, {

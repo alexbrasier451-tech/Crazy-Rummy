@@ -87,13 +87,6 @@ test("a complete thirteen-hand match converges through commands and ordered even
       state = accept(
         state,
         events,
-        COMMAND_TYPE.FINISH_TABLE_PLAY,
-        actorSeatId,
-        commandNumber++
-      );
-      state = accept(
-        state,
-        events,
         COMMAND_TYPE.DISCARD,
         actorSeatId,
         commandNumber++,

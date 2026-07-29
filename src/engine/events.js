@@ -75,7 +75,8 @@ function requireActive(state, event, phase) {
   const hand = expectedHand(state, event);
   requireActorSeat(state, event.actorSeatId);
   if (hand.activeSeatId !== event.actorSeatId) fail(REJECTION.NOT_ACTIVE_PLAYER);
-  if (hand.phase !== phase) fail(REJECTION.WRONG_PHASE);
+  const acceptedPhases = Array.isArray(phase) ? phase : [phase];
+  if (!acceptedPhases.includes(hand.phase)) fail(REJECTION.WRONG_PHASE);
   return hand;
 }
 
@@ -338,7 +339,7 @@ function finishTablePlay(state, event) {
 }
 
 function discard(state, event) {
-  const hand = requireActive(state, event, PHASE.AWAITING_DISCARD);
+  const hand = requireActive(state, event, [PHASE.TABLE_PLAY, PHASE.AWAITING_DISCARD]);
   const cardId = event.payload.cardId;
   cardInHand(hand, event.actorSeatId, cardId);
   const remaining = withoutCard(hand.handsBySeat[event.actorSeatId], cardId);

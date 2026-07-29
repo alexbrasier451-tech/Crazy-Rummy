@@ -91,6 +91,8 @@ test("phase and rejection presenters give a usable action and precise live copy"
     detail: "Draw from the stock or take the visible discard before playing.",
     step: "draw"
   });
+  assert.match(phaseCopy("TABLE_PLAY", true).detail, /discard one card to end your turn/i);
+  assert.doesNotMatch(phaseCopy("TABLE_PLAY", true).detail, /finish table play/i);
   assert.match(rejectionCopy("PLAYER_NOT_OPENED"), /Open with a complete set or run/);
   assert.match(rejectionCopy("INVALID_MELD", "RUN_NOT_CONSECUTIVE"), /run not consecutive/i);
 });
