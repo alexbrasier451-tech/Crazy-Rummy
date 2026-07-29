@@ -84,7 +84,7 @@ try {
       fail(new Error(
         `No matching peer joined code ${testCode}. Confirm both devices show the same code and opposite sides.`,
       ));
-    }, 45_000);
+    }, 120_000);
   }
   render(`Waiting for matching code ${testCode}...`);
 
@@ -154,6 +154,8 @@ try {
       report.localCandidateType === "relay" && report.remoteCandidateType === "relay";
     report.selectedPath = relaySelected ? "relay" : "direct";
     report.finishedAt = new Date().toISOString();
+    delete report.failure;
+    delete report.failedAt;
     report.passed =
       report.configuredTurn &&
       report.payloadRoundTrip &&
@@ -211,6 +213,7 @@ function fail(error) {
   clearTimeout(peerTimeout);
   clearTimeout(connectionTimeout);
   report.failure = error instanceof Error ? error.message : String(error);
+  report.failedAt = new Date().toISOString();
   report.finishedAt = new Date().toISOString();
   report.passed = false;
   statusElement.dataset.status = "failed";
