@@ -92,6 +92,7 @@ test("managed pair signalling maps the Metered publish/subscribe boundary and ca
   assert.equal(received.kind, SIGNAL_KIND.OFFER);
   assert.equal(hostClient.published.length, 1);
   assert.equal(host.getSnapshot().hasIceServers, true);
+  assert.equal(host.getSnapshot().turnCredentialExpiresAt, null);
   assert.match((await host.getIceServers()).iceServers[0].urls, /^turn:/);
   await Promise.all([host.close(), guest.close()]);
   assert.deepEqual(hostClient.unsubscribed, ["crazy-rummy/v1/peer/pair-one"]);
@@ -399,7 +400,7 @@ class FakeManagedClient {
     this.state = "connected";
     this.handlers.get("connected")?.({
       iceServers: [{ urls: "turn:relay.example:3478", username: "temporary", credential: "temporary" }],
-      turnCredentialExpiresAt: 2_000,
+      expiresAt: null,
     });
   }
   async subscribe(channel) { this.channels.add(channel); }

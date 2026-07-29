@@ -126,7 +126,11 @@ export function parseSignallingEnvelope(value, {
   return envelope;
 }
 
-export function validateIceServers(value, { now = Date.now(), maxCredentialTtlMs = 3_600_000 } = {}) {
+export function validateIceServers(value, {
+  now = Date.now(),
+  maxCredentialTtlMs = 3_600_000,
+  allowProviderManagedTurn = false,
+} = {}) {
   const result = Array.isArray(value) ? { iceServers: value, expiresAt: null } : value;
   if (!result || !Array.isArray(result.iceServers)) {
     throw new PeerTransportError("INVALID_ICE_CONFIGURATION", "An ICE server array is required.");
@@ -152,7 +156,7 @@ export function validateIceServers(value, { now = Date.now(), maxCredentialTtlMs
       .some((url) => /^turns?:/i.test(url))
   );
   if (
-    (usesTurn && !Number.isFinite(expiresAt))
+    (usesTurn && !Number.isFinite(expiresAt) && !allowProviderManagedTurn)
     || (expiresAt !== null
       && (!Number.isFinite(expiresAt) || expiresAt <= now || expiresAt - now > maxCredentialTtlMs))
   ) {

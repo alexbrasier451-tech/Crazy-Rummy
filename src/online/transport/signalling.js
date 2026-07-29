@@ -62,10 +62,14 @@ export function createManagedSignallingAdapter({
   const onConnected = (event = {}) => {
     try {
       if (!credentialProvider && Array.isArray(event.iceServers)) {
+        // SignallingClient v1.2 validates TURN metadata before emitting it but
+        // does not expose a credential expiry for publishable-key sessions.
+        // Accept that trusted provider event without weakening direct callers,
+        // which still require an explicit short-lived expiry by default.
         providerIceServers = validateIceServers({
           iceServers: event.iceServers,
           expiresAt: event.turnCredentialExpiresAt ?? event.expiresAt ?? null,
-        }, { now: clock() });
+        }, { now: clock(), allowProviderManagedTurn: true });
       }
       credentialError = null;
       transition(PEER_STATE.CONNECTED);
