@@ -32,11 +32,11 @@ test("fake authority expires presence and unrenewed table leases at authoritativ
   await service.heartbeat({ ...host, ...versions, online: true });
   await service.createTable({ host, visibility: "OPEN", capacity: 3, ...versions });
   assert.equal(service.inspect().presence.length, 1);
-  assert.equal((await service.listTables(versions)).length, 1);
+  assert.equal((await service.listTables(versions)).tables.length, 1);
 
   now.value = 45_000;
   assert.equal(service.inspect().presence.length, 0);
-  assert.equal((await service.listTables(versions)).length, 0);
+  assert.equal((await service.listTables(versions)).tables.length, 0);
 });
 
 test("lease renewal extends availability without changing the table revision", async () => {
@@ -59,10 +59,12 @@ test("Open discovery hides Closed tables and only returns compatible protocol/ru
   const closed = await service.createTable({ host, visibility: "CLOSED", capacity: 3, ...versions });
   await service.createTable({ host: guestOne, visibility: "OPEN", capacity: 3, ...versions });
   const publicList = await service.listTables(versions);
-  assert.equal(publicList.length, 1);
-  assert.equal(publicList[0].visibility, "OPEN");
+  assert.equal(publicList.tables.length, 1);
+  assert.equal(publicList.tables[0].visibility, "OPEN");
   assert.equal(JSON.stringify(publicList).includes(closed.invite.code), false);
-  assert.equal((await service.listTables({ ...versions, rulesVersion: "other-rules" })).length, 0);
+  const incompatible = await service.listTables({ ...versions, rulesVersion: "other-rules" });
+  assert.equal(incompatible.tables.length, 0);
+  assert.equal(incompatible.incompatibleOpenTableCount, 1);
   await rejectsCode(service.lookupTable({ code: closed.invite.code, ...versions, protocolVersion: "other-protocol" }), ONLINE_ERROR.INCOMPATIBLE_PROTOCOL);
   await rejectsCode(service.joinTable({ tableId: closed.table.tableId, player: guestOne, ...versions, rulesVersion: "other-rules" }), ONLINE_ERROR.INCOMPATIBLE_RULES);
 });
@@ -82,10 +84,10 @@ test("conditional seats, acceptance, readiness, leave, and host cancellation pre
   table = (await service.leaveTable({ tableId: table.tableId, playerId: guestTwo.playerId, expectedRevision: table.revision })).table;
   assert.equal(table.occupiedSeats, 2);
   await service.cancelTable({ tableId: table.tableId, hostId: host.playerId, expectedRevision: table.revision });
-  assert.equal((await service.listTables(versions)).length, 0);
+  assert.equal((await service.listTables(versions)).tables.length, 0);
 });
 
-test("two accepted, ready players can start an online match", async () => {
+test("two accepted, ready players connect, recover a failed topology, then confirm an online match", async () => {
   const service = createFakeLobbyService(fakeOptions({ value: 1_000 }));
   let table = (await service.createTable({ host, visibility: "OPEN", capacity: 2, ...versions })).table;
   table = (await service.setReady({
@@ -100,11 +102,33 @@ test("two accepted, ready players can start an online match", async () => {
   table = (await service.setReady({
     tableId: table.tableId, playerId: guestOne.playerId, ready: true, expectedRevision: table.revision
   })).table;
-  const started = await service.startMatch({
+  const connecting = await service.startMatch({
     tableId: table.tableId, hostId: host.playerId, expectedRevision: table.revision
   });
-  assert.equal(started.table.status, "STARTED");
-  assert.equal(started.bootstrap.seats.length, 2);
+  assert.equal(connecting.table.status, "CONNECTING");
+  assert.equal(connecting.bootstrap.seats.length, 2);
+  const guestBootstrap = await service.getMatchBootstrap({
+    tableId: table.tableId, playerId: guestOne.playerId
+  });
+  assert.equal(guestBootstrap.table.status, "CONNECTING");
+  assert.equal(guestBootstrap.bootstrap.localPlayerId, guestOne.playerId);
+
+  const restored = await service.abortStart({
+    tableId: table.tableId, hostId: host.playerId, expectedRevision: connecting.table.revision
+  });
+  assert.equal(restored.aborted, true);
+  assert.equal(restored.table.status, "OPEN");
+  assert.equal(restored.table.seats.every((seat) => seat.ready && seat.acceptedAt !== null), true);
+  await rejectsCode(service.getMatchBootstrap({ tableId: table.tableId, playerId: guestOne.playerId }), ONLINE_ERROR.NOT_FOUND);
+
+  const retry = await service.startMatch({
+    tableId: table.tableId, hostId: host.playerId, expectedRevision: restored.table.revision
+  });
+  const confirmed = await service.confirmStart({
+    tableId: table.tableId, hostId: host.playerId, expectedRevision: retry.table.revision
+  });
+  assert.equal(confirmed.table.status, "STARTED");
+  assert.equal(confirmed.bootstrap.matchId, retry.bootstrap.matchId);
 });
 
 function createScheduler() {
@@ -261,6 +285,57 @@ test("provider routing and invite secrets never cross the UI snapshot boundary",
   const encoded = JSON.stringify(session.getSnapshot().tables);
   assert.doesNotMatch(encoded, /providerScope|inviteCode|roomSecret|seatSecret|must-not-render/);
   session.dispose();
+});
+
+test("session exposes incompatible open-table discovery metadata without exposing incompatible tables", async () => {
+  const session = createOnlineLobbySession({
+    service: {
+      heartbeat: async () => ({ expiresAt: 45_000 }),
+      listTables: async () => ({
+        tables: [{ tableId: "compatible-table", visibility: "OPEN", protocolVersion: versions.protocolVersion, rulesVersion: versions.rulesVersion }],
+        incompatibleOpenTableCount: 2
+      })
+    },
+    player: host,
+    ...versions,
+    scheduler: createScheduler(),
+    jitterRatio: 0
+  });
+  await session.goOnline();
+  assert.deepEqual(session.getSnapshot().tables.map((table) => table.tableId), ["compatible-table"]);
+  assert.equal(session.getSnapshot().discovery.incompatibleOpenTableCount, 2);
+  session.dispose();
+});
+
+test("host session can abort a connecting start after topology failure and retain the ready room", async () => {
+  const now = { value: 0 };
+  const service = createFakeLobbyService(fakeOptions(now));
+  const hostSession = createOnlineLobbySession({ service, player: host, ...versions, scheduler: createScheduler(), clock: () => now.value, jitterRatio: 0 });
+  const guestSession = createOnlineLobbySession({ service, player: guestOne, ...versions, scheduler: createScheduler(), clock: () => now.value, jitterRatio: 0 });
+  await hostSession.goOnline();
+  const created = await hostSession.createTable({ visibility: "OPEN", capacity: 2 });
+  await hostSession.setReady(true);
+  await guestSession.goOnline();
+  await guestSession.joinTable({
+    tableId: created.table.tableId,
+    revision: hostSession.getSnapshot().room.table.revision
+  });
+  await guestSession.setReady(true);
+  await hostSession.refresh();
+
+  await hostSession.startMatch();
+  assert.equal(hostSession.getSnapshot().room.table.status, "CONNECTING");
+  assert.ok(hostSession.getMatchBootstrap());
+  await hostSession.abortStart();
+  const recovered = hostSession.getSnapshot();
+  assert.equal(recovered.room.table.status, "OPEN");
+  assert.equal(recovered.room.table.seats.every((seat) => seat.ready && seat.acceptedAt !== null), true);
+  assert.equal(hostSession.getMatchBootstrap(), null);
+  await hostSession.startMatch();
+  await hostSession.confirmStart();
+  assert.equal(hostSession.getSnapshot().room.table.status, "STARTED");
+  hostSession.dispose();
+  guestSession.dispose();
 });
 
 test("the UI session completes Closed-code acceptance before object-form readiness and passes both provider revision fields", async () => {

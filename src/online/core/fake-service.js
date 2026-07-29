@@ -152,9 +152,14 @@ export function createFakeLobbyService(options = {}) {
     async listTables(input) {
       expire();
       const requested = versions(input);
-      return [...tables.values()]
-        .filter((table) => table.visibility === TABLE_VISIBILITY.OPEN && table.status === TABLE_STATUS.OPEN && compatible(table, requested))
-        .map((table) => copy(publicTable(table)));
+      const openTables = [...tables.values()]
+        .filter((table) => table.visibility === TABLE_VISIBILITY.OPEN && table.status === TABLE_STATUS.OPEN);
+      return {
+        tables: openTables
+          .filter((table) => compatible(table, requested))
+          .map((table) => copy(publicTable(table))),
+        incompatibleOpenTableCount: openTables.filter((table) => !compatible(table, requested)).length
+      };
     },
 
     async createTable(input) {
@@ -293,15 +298,42 @@ export function createFakeLobbyService(options = {}) {
       const pairScopes = {};
       for (let index = 0; index < table.seats.length; index += 1) for (let other = index + 1; other < table.seats.length; other += 1) pairScopes[[table.seats[index].playerId, table.seats[other].playerId].sort().join("|")] = `pair_${token(16)}`;
       table.match = { matchId, roomSecret: token(24), seatSecrets, seatProofs, pairScopes };
+      table.status = TABLE_STATUS.CONNECTING;
+      table.revision += 1;
+      return { table: copy(roomTable(table)), bootstrap: matchBootstrap(table, hostId, token) };
+    },
+
+    async confirmStart(input) {
+      const table = found(input?.tableId);
+      const hostId = assertPlayerId(input?.hostId);
+      condition(table, input?.expectedRevision);
+      if (table.hostPlayerId !== hostId) throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "Only the host can confirm this match.");
+      if (table.status !== TABLE_STATUS.CONNECTING || !table.match) {
+        throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "This match is not waiting for player connections.");
+      }
       table.status = TABLE_STATUS.STARTED;
       table.revision += 1;
       return { table: copy(roomTable(table)), bootstrap: matchBootstrap(table, hostId, token) };
     },
 
+    async abortStart(input) {
+      const table = found(input?.tableId);
+      const hostId = assertPlayerId(input?.hostId);
+      condition(table, input?.expectedRevision);
+      if (table.hostPlayerId !== hostId) throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "Only the host can restore this table.");
+      if (table.status !== TABLE_STATUS.CONNECTING) {
+        throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "Only a connecting match can be restored to the waiting room.");
+      }
+      table.match = null;
+      table.status = TABLE_STATUS.OPEN;
+      table.revision += 1;
+      return { table: copy(roomTable(table)), aborted: true };
+    },
+
     async getMatchBootstrap(input) {
       const table = found(input?.tableId);
       const playerId = assertPlayerId(input?.playerId);
-      if (table.status !== TABLE_STATUS.STARTED) throw new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "The match has not started.");
+      if (![TABLE_STATUS.CONNECTING, TABLE_STATUS.STARTED].includes(table.status)) throw new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "The match has not started.");
       const bootstrap = matchBootstrap(table, playerId, token);
       if (!bootstrap) throw new OnlineLobbyError(ONLINE_ERROR.FORBIDDEN, "Only a seated player may receive match details.");
       return { table: copy(roomTable(table)), bootstrap };

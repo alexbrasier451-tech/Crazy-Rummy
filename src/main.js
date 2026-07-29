@@ -3,12 +3,14 @@ import "./styles/index.css";
 import { connectionState } from "./components/index.js";
 import { createRouter } from "./app/router.js";
 import { applyPreferencesToRoot, normalizePreferences } from "./app/preferences.js";
+import { connectOnlineMatch } from "./app/online-match-start.js";
 import {
   activatePwaUpdate,
   getPwaStatus,
   registerPwa,
   subscribePwaStatus
 } from "./pwa/register.js";
+import { onlineUpdateGuard } from "./pwa/update-guard.js";
 import { renderScreen } from "./screens/index.js";
 import { APP_NAME } from "./config.js";
 import { createLocalGameSession } from "./local/index.js";
@@ -50,6 +52,14 @@ localSession.subscribe((snapshot) => {
 
 async function activateUpdateAndReload() {
   if (!pwaStatus.updateReady || !navigator.serviceWorker) return false;
+  const updateGuard = onlineUpdateGuard({
+    onlineSession,
+    onlineMatchSession
+  });
+  if (updateGuard.blocked) {
+    console.warn(`Crazy Rummy postponed the app update. ${updateGuard.reason}`);
+    return false;
+  }
 
   let removeControllerListener = () => {};
   const controllerChanged = new Promise((resolve) => {
@@ -103,10 +113,17 @@ async function startOnlineMatch() {
   const bootstrap = lobby.getMatchBootstrap?.();
   const playerId = localSession.getSnapshot().identity?.playerId;
   if (!bootstrap || !playerId) throw new Error("The match start details are not available yet.");
-  await onlineMatchSession?.dispose?.();
-  onlineMatchSession = createConfiguredOnlineMatchSession({ bootstrap, playerId });
-  await onlineMatchSession.start();
-  return onlineMatchSession;
+  const previousMatch = onlineMatchSession;
+  onlineMatchSession = null;
+  const match = await connectOnlineMatch({
+    lobby,
+    bootstrap,
+    playerId,
+    previousMatch,
+    createMatch: createConfiguredOnlineMatchSession
+  });
+  onlineMatchSession = match;
+  return match;
 }
 
 async function disposeOnlineMatch() {
@@ -275,6 +292,12 @@ document.addEventListener("click", (event) => {
   activeScreen?.focus({ preventScroll: true });
   activeScreen?.scrollIntoView({ block: "start" });
 }, true);
+
+window.addEventListener("beforeunload", (event) => {
+  if (!onlineUpdateGuard({ onlineSession, onlineMatchSession }).blocked) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
 
 router.start();
 

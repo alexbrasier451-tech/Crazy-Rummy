@@ -85,6 +85,7 @@ export function createOnlineLobbySession(options = {}) {
   let timer = null;
   let disposed = false;
   let lastRefreshAt = null;
+  let incompatibleOpenTableCount = 0;
 
   function isVisible() { return visibility.isVisible?.() !== false; }
   function autoRefreshEnabled() {
@@ -107,6 +108,7 @@ export function createOnlineLobbySession(options = {}) {
       presence: { ...presence, error: serializableError(presence.error) },
       tables,
       room: { table: roomTable, invite },
+      discovery: { incompatibleOpenTableCount },
       polling: {
         visible: isVisible(),
         autoRefresh: autoRefreshEnabled(),
@@ -141,6 +143,7 @@ export function createOnlineLobbySession(options = {}) {
     const nextScope = result?.providerScope ?? tableScope;
     if (typeof nextScope === "string") providerScope = nextScope;
     if (result?.bootstrap && result.bootstrap.localPlayerId === player.playerId) matchBootstrap = result.bootstrap;
+    if (!table || table.status === "OPEN") matchBootstrap = null;
   }
   function delayFor(failures) {
     const base = Math.min(maxPollMs, pollMs * (2 ** failures));
@@ -223,6 +226,10 @@ export function createOnlineLobbySession(options = {}) {
       if (disposed || token !== requestSequence) return { stale: true };
       const discovered = Array.isArray(response) ? response : response?.tables ?? [];
       tables = discovered.map(publicTable);
+      incompatibleOpenTableCount = Number.isInteger(response?.incompatibleOpenTableCount)
+        && response.incompatibleOpenTableCount >= 0
+        ? response.incompatibleOpenTableCount
+        : 0;
       lastRefreshAt = clockNow(clock);
       consecutiveFailures = 0;
       lastError = null;
@@ -384,6 +391,27 @@ export function createOnlineLobbySession(options = {}) {
         expectedRevision: roomTable.revision,
         expectedTableVersion: roomTable.revision
       })));
+    },
+    confirmStart() {
+      if (!roomTable) return Promise.reject(new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "There is no table to confirm."));
+      return mutate("confirmStart", () => service.confirmStart(callInput({
+        tableId: roomTable.tableId,
+        hostId: player.playerId,
+        expectedRevision: roomTable.revision,
+        expectedTableVersion: roomTable.revision
+      })));
+    },
+    abortStart() {
+      if (!roomTable) return Promise.reject(new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "There is no connecting table to restore."));
+      return mutate("abortStart", () => service.abortStart(callInput({
+        tableId: roomTable.tableId,
+        hostId: player.playerId,
+        expectedRevision: roomTable.revision,
+        expectedTableVersion: roomTable.revision
+      }))).then((result) => {
+        matchBootstrap = null;
+        return result;
+      });
     },
     getMatchBootstrap() { return matchBootstrap ? frozenCopy(matchBootstrap) : null; },
     clearMatchBootstrap() { matchBootstrap = null; },

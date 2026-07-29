@@ -9,6 +9,7 @@ import {
   RULES_VERSION as ENGINE_RULES_VERSION
 } from "../engine/index.js";
 import { APP_VERSION } from "../config.js";
+import { onlineUpdateGuard } from "../pwa/update-guard.js";
 import {
   bulletList,
   copy,
@@ -211,6 +212,8 @@ export function settingsScreen({
   pwaStatus,
   activateUpdate,
   localSession,
+  onlineSession,
+  onlineMatchSession,
   clearDeviceData,
   completedSummary
 } = {}) {
@@ -299,9 +302,12 @@ export function settingsScreen({
   ];
 
   if (status.updateReady) {
+    const updateGuard = onlineUpdateGuard({ onlineSession, onlineMatchSession });
+    if (updateGuard.blocked) installContent.push(copy(updateGuard.reason));
     installContent.push(actionButton({
-      label: "Update and reload",
+      label: updateGuard.blocked ? "Update available after online play" : "Update and reload",
       pending: status.phase === "activating",
+      disabled: updateGuard.blocked,
       onActivate: () => activateUpdate?.()
     }));
   }

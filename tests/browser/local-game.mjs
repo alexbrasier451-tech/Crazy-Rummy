@@ -321,6 +321,13 @@ try {
   );
   assert.equal(await page.getByLabel("Wild completes run as suit for Ace of clubs").count(), 0,
     "the natural run cards must determine the wild suit");
+  const editableWild = page.locator('[data-game-composer-card="true"][data-card-id="clubs:A"]');
+  assert.equal(await editableWild.count(), 1,
+    "the composer must expose the staged cards for direct editing");
+  await editableWild.click();
+  assert.equal(await page.locator('[data-game-sheet="compose-meld"]').count(), 1,
+    "removing a staged card must keep the editable composer open");
+  await page.locator('[data-game-composer-card="true"][data-card-id="clubs:A"]').click();
   await wildRankChoice.selectOption("Q");
   assert.equal(await wildRankChoice.inputValue(), "Q",
     "a legal run choice must remain visible after rerender");
@@ -346,6 +353,16 @@ try {
   );
   await refreshPreservesAcceptedState(page, "TABLE_PLAY", "accepted opening meld");
 
+  const replacementCandidates = await page.locator('[data-private-hand] [data-card-id]').evaluateAll((nodes) => (
+    nodes.slice(0, 2).map((node) => node.dataset.cardId)
+  ));
+  await chooseCards(page, replacementCandidates);
+  await openActions(page);
+  assert.equal(await control(page, "replace-wild").isDisabled(), true,
+    "wild replacement must require exactly one natural card, not silently take the first selection");
+  await control(page, "close-actions").click();
+  await clearSelection(page);
+
   await openActions(page);
   assert.equal(await control(page, "finish-table-play").count(), 0,
     "the current UI must not require a redundant finish-table-play action");
@@ -367,7 +384,7 @@ try {
     await handResult.getByRole("heading", { name: "Next hand" }).locator("xpath=..").innerText(),
     /Hand 2: 2 wild; .* deals first/i
   );
-  await page.getByRole("button", { name: "All fixture seats continue" }).click();
+  await page.getByRole("button", { name: "Continue to next hand" }).click();
   await page.waitForURL(/#\/game$/);
 
   await showGameDetails(page);

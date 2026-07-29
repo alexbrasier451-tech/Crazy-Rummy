@@ -153,6 +153,25 @@ function mountLobbyDuringInitialRefresh() {
   }));
 }
 
+function mountLobbyWithCompatibilityWarning() {
+  const snapshot = Object.freeze({
+    online: true,
+    presence: { status: "online", lastHeartbeatAt: new Date().toISOString() },
+    discovery: { incompatibleOpenTableCount: 2 },
+    tables: []
+  });
+  mount(lobbyScreen({
+    navigate: (path) => { document.body.dataset.lastNavigation = path; },
+    router,
+    onlineSession: Object.freeze({
+      getSnapshot: () => snapshot,
+      subscribe: () => () => {},
+      async goOffline() {},
+      async refresh() {}
+    })
+  }));
+}
+
 async function finishInitialRefresh() {
   pendingRefreshResolve?.();
   await new Promise((resolve) => queueMicrotask(resolve));
@@ -194,6 +213,7 @@ globalThis.onlineHarness = Object.freeze({
   startClosedJourney,
   prepareTwoPlayerStart,
   mountLobbyDuringInitialRefresh,
+  mountLobbyWithCompatibilityWarning,
   finishInitialRefresh,
   mountWaitingRoomDuringRefresh,
   finishRoomRefresh,

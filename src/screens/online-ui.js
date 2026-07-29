@@ -47,7 +47,13 @@ export function onlineErrorCopy(error, fallback) {
   }
   if (code === "TABLE_FULL") return "That table is full. Refresh and choose another table.";
   if (code === "TABLE_STARTED") return "That table has already started.";
-  if (code === "INVITE_EXPIRED" || code === "TABLE_NOT_FOUND" || code === "NOT_FOUND") {
+  if (
+    code === "INVITE_EXPIRED"
+    || code === "TABLE_NOT_FOUND"
+    || code === "TABLE_EXPIRED"
+    || code === "TABLE_CANCELLED"
+    || code === "NOT_FOUND"
+  ) {
     return "That code has expired or no longer matches a table.";
   }
   if (code === "INCOMPATIBLE_PROTOCOL" || code === "INCOMPATIBLE_RULES") {
@@ -55,6 +61,26 @@ export function onlineErrorCopy(error, fallback) {
   }
   if (code === "METERED_QUOTA_EXHAUSTED") {
     return "Online play has reached its free service limit. Try again later.";
+  }
+  if (code === "STALE_TABLE" || code === "TABLE_SCOPE_UNKNOWN") {
+    return "That table changed or is no longer available. Refresh the table list and try again.";
+  }
+  if (code === "RATE_LIMITED" || code === "METERED_RATE_LIMITED") {
+    return "Too many requests were sent at once. Wait a moment, then try again.";
+  }
+  if (
+    code === "SIGNALLING_TIMEOUT"
+    || code === "PEER_CONNECTION_FAILED"
+    || code === "TOPOLOGY_NOT_CONNECTED"
+    || code === "WEBRTC_DISCONNECTED"
+  ) {
+    return "A direct connection to another player could not be made. Check both devices are online, then retry.";
+  }
+  if (code === "METERED_PROVIDER_FAILURE") {
+    return "The online lobby was interrupted. Your current choices are still here; try again.";
+  }
+  if (code === "FORBIDDEN") {
+    return "That action is no longer available in the table’s current state. Refresh the room and try again.";
   }
   if (code === "NAME_COLLISION") return "That name is already at this table. Choose another name.";
   return fallback ?? "That request could not be completed. Your choices are still here.";

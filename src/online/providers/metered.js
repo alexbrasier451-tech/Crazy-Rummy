@@ -19,6 +19,8 @@ const DEFAULT_CONFIG = Object.freeze({
     cancelTable: 500,
     renewLease: 5_000,
     startMatch: 500,
+    confirmStart: 500,
+    abortStart: 500,
     getMatchBootstrap: 500,
   }),
 });
@@ -164,6 +166,8 @@ export function createMeteredLobbyProvider({
     async cancelTable(input) { return request("cancelTable", input, tableScope(input?.tableId)); },
     async renewLease(input) { return request("renewLease", input, tableScope(input?.tableId)); },
     async startMatch(input) { return request("startMatch", input, tableScope(input?.tableId)); },
+    async confirmStart(input) { return request("confirmStart", input, tableScope(input?.tableId)); },
+    async abortStart(input) { return request("abortStart", input, tableScope(input?.tableId)); },
     async getMatchBootstrap(input) { return request("getMatchBootstrap", input, tableScope(input?.tableId)); },
   });
 
@@ -274,6 +278,11 @@ export function createMeteredRealtimeRequestClient({
         reject(error) { clearTimeout(timer); reject(error); },
         tables: [],
         discovery: envelope.operation === "listTables",
+        discoveryVersions: envelope.operation === "listTables"
+          ? { protocolVersion: envelope.payload?.protocolVersion, rulesVersion: envelope.payload?.rulesVersion }
+          : null,
+        incompatibleOpenTableCountByResponder: new Map(),
+        incompatibleAdvertisementIdsByResponder: new Map(),
       });
       try {
         await client.publish(envelope.channel, {
@@ -286,7 +295,10 @@ export function createMeteredRealtimeRequestClient({
             const pendingRequest = pending.get(envelope.requestId);
             if (!pendingRequest) return;
             pending.delete(envelope.requestId);
-            pendingRequest.resolve({ ok: true, value: { tables: dedupeTables(pendingRequest.tables) } });
+            pendingRequest.resolve({ ok: true, value: {
+              tables: dedupeTables(pendingRequest.tables),
+              incompatibleOpenTableCount: incompatibleDiscoveryCount(pendingRequest)
+            } });
           }, discoveryWindowMs);
         }
       } catch (error) {
@@ -314,7 +326,7 @@ export function createMeteredRealtimeRequestClient({
       const pendingRequest = pending.get(message.requestId);
       if (!pendingRequest || message.toInstallationId !== installationId) return;
       if (pendingRequest.discovery) {
-        collectTables(pendingRequest.tables, message.value);
+        collectDiscovery(pendingRequest, message.value, message.installationId);
         return;
       }
       pending.delete(message.requestId);
@@ -322,7 +334,9 @@ export function createMeteredRealtimeRequestClient({
       return;
     }
     if (message.type === "crazy-rummy/table-advertisement") {
-      for (const pendingRequest of pending.values()) if (pendingRequest.discovery) collectTables(pendingRequest.tables, { table: message.table });
+      for (const pendingRequest of pending.values()) {
+        if (pendingRequest.discovery) collectAdvertisement(pendingRequest, message.table, message.installationId);
+      }
       return;
     }
     if (!["crazy-rummy/lobby-request", "crazy-rummy/discovery-request"].includes(message.type) || !hostHandler) return;
@@ -475,9 +489,57 @@ function rememberScopes(value, scopes) {
   }
 }
 
-function collectTables(target, value) {
-  if (value?.table) target.push(value.table);
-  if (Array.isArray(value?.tables)) target.push(...value.tables);
+function collectDiscovery(pendingRequest, value, responderId) {
+  collectCompatibleTables(pendingRequest.tables, value, pendingRequest.discoveryVersions);
+  if (Number.isInteger(value?.incompatibleOpenTableCount) && value.incompatibleOpenTableCount >= 0) {
+    pendingRequest.incompatibleOpenTableCountByResponder.set(responderId, value.incompatibleOpenTableCount);
+  }
+}
+
+function collectAdvertisement(pendingRequest, table, responderId) {
+  if (!table || table.visibility !== "OPEN") return;
+  if (compatibleWithDiscovery(table, pendingRequest.discoveryVersions)) {
+    pendingRequest.tables.push(table);
+    return;
+  }
+  if (!table?.tableId) return;
+  let ids = pendingRequest.incompatibleAdvertisementIdsByResponder.get(responderId);
+  if (!ids) {
+    ids = new Set();
+    pendingRequest.incompatibleAdvertisementIdsByResponder.set(responderId, ids);
+  }
+  ids.add(table.tableId);
+}
+
+function collectCompatibleTables(target, value, versions) {
+  const values = [];
+  if (value?.table) values.push(value.table);
+  if (Array.isArray(value?.tables)) values.push(...value.tables);
+  for (const table of values) if (compatibleWithDiscovery(table, versions)) target.push(table);
+}
+
+function compatibleWithDiscovery(table, versions) {
+  if (versions?.protocolVersion === undefined && versions?.rulesVersion === undefined) {
+    return table?.visibility === "OPEN";
+  }
+  return table?.visibility === "OPEN"
+    && table.protocolVersion === versions?.protocolVersion
+    && table.rulesVersion === versions?.rulesVersion;
+}
+
+function incompatibleDiscoveryCount(pendingRequest) {
+  const responderIds = new Set([
+    ...pendingRequest.incompatibleOpenTableCountByResponder.keys(),
+    ...pendingRequest.incompatibleAdvertisementIdsByResponder.keys()
+  ]);
+  let count = 0;
+  for (const responderId of responderIds) {
+    const responseCount = pendingRequest.incompatibleOpenTableCountByResponder.get(responderId);
+    count += Number.isInteger(responseCount)
+      ? responseCount
+      : pendingRequest.incompatibleAdvertisementIdsByResponder.get(responderId)?.size ?? 0;
+  }
+  return count;
 }
 
 function dedupeTables(tables) {

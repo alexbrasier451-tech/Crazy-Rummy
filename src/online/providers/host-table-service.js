@@ -49,6 +49,8 @@ export function createMeteredHostTableService({
       case "cancelTable": value = cancelTable(envelope); break;
       case "renewLease": value = renewLease(envelope); break;
       case "startMatch": value = startMatch(envelope); break;
+      case "confirmStart": value = confirmStart(envelope); break;
+      case "abortStart": value = abortStart(envelope); break;
       case "getMatchBootstrap": value = getMatchBootstrap(envelope, context); break;
       default: throw invalid("Unsupported host table operation.");
     }
@@ -70,9 +72,14 @@ export function createMeteredHostTableService({
 
   function listTables(input) {
     const requested = versions(input);
-    return { tables: [...tables.values()]
-      .filter((table) => table.visibility === "OPEN" && table.status === "OPEN" && compatible(table, requested))
-      .map((table) => projection(table, { room: false })) };
+    const openTables = [...tables.values()]
+      .filter((table) => table.visibility === "OPEN" && table.status === "OPEN");
+    return {
+      tables: openTables
+        .filter((table) => compatible(table, requested))
+        .map((table) => projection(table, { room: false })),
+      incompatibleOpenTableCount: openTables.filter((table) => !compatible(table, requested)).length
+    };
   }
 
   function createTable(envelope) {
@@ -162,6 +169,7 @@ export function createMeteredHostTableService({
 
   function leaveTable(envelope) {
     const table = tableForMutation(envelope);
+    if (table.status !== "OPEN") throw new MeteredProviderError("FORBIDDEN", "Restore the connecting table before changing its seats.");
     conditional(table, envelope);
     const playerId = requireId(envelope.payload.playerId);
     if (playerId === table.hostPlayerId) { tables.delete(table.tableId); return { table: null, cancelled: true }; }
@@ -196,15 +204,36 @@ export function createMeteredHostTableService({
     const pairScopes = {};
     for (let index = 0; index < seats.length; index += 1) for (let other = index + 1; other < seats.length; other += 1) pairScopes[[seats[index].playerId, seats[other].playerId].sort().join("|")] = `${channelPrefix}/peer/${createSecret(16)}`;
     table.match = { matchId: `match_${createSecret(12)}`, roomSecret: createSecret(24), seatSecrets, seatProofs, pairScopes };
+    table.status = "CONNECTING";
+    table.revision += 1;
+    return { table: projection(table, { room: true }), bootstrap: bootstrapFor(table, table.hostPlayerId) };
+  }
+
+  function confirmStart(envelope) {
+    const table = tableForMutation(envelope);
+    conditional(table, envelope);
+    if (requireId(envelope.payload.hostId) !== table.hostPlayerId) throw new MeteredProviderError("FORBIDDEN", "Only the host can confirm this match.");
+    if (table.status !== "CONNECTING" || !table.match) throw new MeteredProviderError("FORBIDDEN", "This match is not waiting for player connections.");
     table.status = "STARTED";
     table.revision += 1;
     return { table: projection(table, { room: true }), bootstrap: bootstrapFor(table, table.hostPlayerId) };
   }
 
+  function abortStart(envelope) {
+    const table = tableForMutation(envelope);
+    conditional(table, envelope);
+    if (requireId(envelope.payload.hostId) !== table.hostPlayerId) throw new MeteredProviderError("FORBIDDEN", "Only the host can restore this table.");
+    if (table.status !== "CONNECTING") throw new MeteredProviderError("FORBIDDEN", "Only a connecting match can be restored to the waiting room.");
+    table.match = null;
+    table.status = "OPEN";
+    table.revision += 1;
+    return { table: projection(table, { room: true }), aborted: true };
+  }
+
   function getMatchBootstrap(envelope, context) {
     const table = tableForMutation(envelope);
     const playerId = requireId(envelope.payload.playerId);
-    if (table.status !== "STARTED") throw new MeteredProviderError("NOT_FOUND", "The match has not started.");
+    if (!["CONNECTING", "STARTED"].includes(table.status)) throw new MeteredProviderError("NOT_FOUND", "The match has not started.");
     if (!table.seats.some((seat) => seat.playerId === playerId)) throw new MeteredProviderError("FORBIDDEN", "Match bootstrap is unavailable.");
     // The realtime bridge sends this response directly to the requesting peer.
     if (context.fromPeerId === null && playerId !== table.hostPlayerId) throw new MeteredProviderError("FORBIDDEN", "Bootstrap requires the seated peer route.");
@@ -271,7 +300,14 @@ function projection(table, { room }) {
 }
 function versions(value) { return { protocolVersion: version(value?.protocolVersion), rulesVersion: version(value?.rulesVersion) }; }
 function compatible(table, requested) { return table.protocolVersion === requested.protocolVersion && table.rulesVersion === requested.rulesVersion; }
-function assertCompatible(table, requested) { if (!compatible(table, requested)) throw new MeteredProviderError("INCOMPATIBLE_PROTOCOL", "This table uses an incompatible protocol or rules version."); }
+function assertCompatible(table, requested) {
+  if (table.protocolVersion !== requested.protocolVersion) {
+    throw new MeteredProviderError("INCOMPATIBLE_PROTOCOL", "This table uses an incompatible protocol version.");
+  }
+  if (table.rulesVersion !== requested.rulesVersion) {
+    throw new MeteredProviderError("INCOMPATIBLE_RULES", "This table uses an incompatible rules version.");
+  }
+}
 function playerFrom(value) { return { playerId: requireId(value?.playerId), displayName: displayName(value?.displayName) }; }
 function seatFor(table, playerId) { return table.seats.find((seat) => seat.playerId === requireId(playerId)); }
 function requireId(value) { if (!ID.test(value || "")) throw invalid("A bounded anonymous player or table ID is required."); return value; }

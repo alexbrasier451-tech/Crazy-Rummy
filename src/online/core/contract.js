@@ -1,7 +1,7 @@
 import { ONLINE_ERROR, OnlineLobbyError } from "./errors.js";
 
 export const TABLE_VISIBILITY = Object.freeze({ OPEN: "OPEN", CLOSED: "CLOSED" });
-export const TABLE_STATUS = Object.freeze({ OPEN: "OPEN", STARTING: "STARTING", STARTED: "STARTED", CANCELLED: "CANCELLED" });
+export const TABLE_STATUS = Object.freeze({ OPEN: "OPEN", CONNECTING: "CONNECTING", STARTED: "STARTED", CANCELLED: "CANCELLED" });
 export const MIN_TABLE_CAPACITY = 2;
 export const MAX_TABLE_CAPACITY = 6;
 export const HEARTBEAT_MS = 15_000;

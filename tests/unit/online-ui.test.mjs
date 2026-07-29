@@ -26,6 +26,12 @@ test("online lobby presenters preserve safe table metadata and precise recovery 
   assert.match(onlineErrorCopy({ code: "INVITE_EXPIRED" }), /expired/i);
   assert.match(onlineErrorCopy({ code: "SERVICE_UNAVAILABLE" }), /not configured/i);
   assert.match(onlineErrorCopy({ code: "METERED_QUOTA_EXHAUSTED" }), /free service limit/i);
+  assert.match(onlineErrorCopy({ code: "STALE_TABLE" }), /refresh/i);
+  assert.match(onlineErrorCopy({ code: "RATE_LIMITED" }), /wait a moment/i);
+  assert.match(onlineErrorCopy({ code: "PEER_CONNECTION_FAILED" }), /direct connection/i);
+  assert.match(onlineErrorCopy({ code: "TABLE_CANCELLED" }), /expired|no longer/i);
+  assert.match(onlineErrorCopy({ code: "METERED_PROVIDER_FAILURE" }), /interrupted/i);
+  assert.match(onlineErrorCopy({ code: "FORBIDDEN" }), /refresh/i);
   assert.equal(freshnessCopy({ online: true, presence: { lastHeartbeatAt: 10_000 } }, 15_000), "Just now");
   assert.match(freshnessCopy({ online: true, presence: { lastHeartbeatAt: 10_000 } }, 80_000), /May be out of date/);
 });

@@ -1,6 +1,5 @@
 import {
   actionButton,
-  actionLink,
   createAcceptedFeedbackCoordinator,
   routeLine,
   scoreStrip
@@ -22,7 +21,7 @@ import {
   bulletList,
   copy,
   panel,
-  screenShell,
+  screenWithMenu,
   stack
 } from "./helpers.js";
 
@@ -47,12 +46,11 @@ function returnToLobby(navigate, onReturnToLobby) {
   return navigate("/lobby");
 }
 
-function unavailableResultScreen({ final = false, navigate, online = false, onReturnToLobby }) {
-  return screenShell({
+function unavailableResultScreen({ final = false, navigate, router, online = false, onReturnToLobby }) {
+  return screenWithMenu({
     id: final ? "final-result" : "hand-result",
     context: final ? "Journey in progress" : "Hand in progress",
     title: final ? "Final standings are not ready" : "This hand is not complete",
-    action: actionLink({ label: "Rules", href: "#/rules", variant: "quiet" }),
     status: copy(
       online
         ? "The host has not delivered an authoritative result yet."
@@ -70,7 +68,9 @@ function unavailableResultScreen({ final = false, navigate, online = false, onRe
           onActivate: () => returnToLobby(navigate, onReturnToLobby)
         })
       )
-    ]
+    ],
+    router,
+    menuContent: [actionButton({ label: "Return to Lobby", variant: "secondary", onActivate: () => returnToLobby(navigate, onReturnToLobby) })]
   });
 }
 
@@ -105,13 +105,13 @@ function startResultFeedback(shell, localSession, action) {
   return () => feedback.cancel();
 }
 
-export function handResultScreen({ navigate, localSession, onlineGameSession, onReturnToLobby }) {
+export function handResultScreen({ navigate, router, localSession, onlineGameSession, onReturnToLobby }) {
   const isOnline = Boolean(onlineGameSession);
   const session = onlineGameSession ?? localSession;
   const snapshot = session?.getSnapshot?.();
   const state = snapshot?.view;
   const result = state?.hand?.result;
-  if (!result) return unavailableResultScreen({ navigate, online: isOnline, onReturnToLobby });
+  if (!result) return unavailableResultScreen({ navigate, router, online: isOnline, onReturnToLobby });
 
   const handIndex = state.hand.index;
   const winnerName = result.winnerSeatId
@@ -135,7 +135,7 @@ export function handResultScreen({ navigate, localSession, onlineGameSession, on
       ? localWaiting
         ? "Acknowledge this result when you are ready to continue."
         : `Waiting for ${waiting.length} other ${waiting.length === 1 ? "player" : "players"} to continue.`
-      : `${waiting.length} fixture ${waiting.length === 1 ? "seat" : "seats"} still to continue.`
+      : `${waiting.length} player${waiting.length === 1 ? "" : "s"} still to continue.`
   );
   let pending = false;
 
@@ -180,16 +180,15 @@ export function handResultScreen({ navigate, localSession, onlineGameSession, on
       ? localWaiting ? "Continue to next hand" : "Waiting for other players"
       : handIndex === state.rules.handCount
       ? "View final standings"
-      : "All fixture seats continue",
+      : "Continue to next hand",
     disabled: isOnline && !localWaiting,
     onActivate: continueMatch
   });
 
-  const shell = screenShell({
+  const shell = screenWithMenu({
     id: "hand-result",
     context: `Hand ${String(handIndex).padStart(2, "0")} complete`,
     title: winnerName ? `${winnerName} went out` : "Stock exhausted",
-    action: actionLink({ label: "Rules", href: "#/rules", variant: "quiet" }),
     status,
     content: [
       scoreStrip({
@@ -213,11 +212,11 @@ export function handResultScreen({ navigate, localSession, onlineGameSession, on
       }),
       preview ? panel("Next hand", copy(nextHandCopy(preview, snapshot))) : null,
       panel(
-        isOnline ? "Continue the match" : "Continue the local fixture",
+        "Continue the match",
         copy(
           isOnline
             ? "Each active player acknowledges only their own result. The host starts the next hand after everyone is ready."
-            : "This developer harness acknowledges every local fixture seat before the engine deals the next hand."
+            : "Everyone at this table continues together before the next hand is dealt."
         ),
         stack(
           continueButton,
@@ -236,7 +235,9 @@ export function handResultScreen({ navigate, localSession, onlineGameSession, on
           })
         )
       )
-    ]
+    ],
+    router,
+    menuContent: [actionButton({ label: "Return to Lobby", variant: "secondary", onActivate: () => returnToLobby(navigate, onReturnToLobby) })]
   });
   const unsubscribe = isOnline
     ? session.subscribe?.((next) => {
@@ -277,6 +278,7 @@ export function handResultScreen({ navigate, localSession, onlineGameSession, on
 
 export function finalResultScreen({
   navigate,
+  router,
   localSession,
   onlineGameSession,
   completedSummary,
@@ -297,7 +299,7 @@ export function finalResultScreen({
     : { view: state, localSeatId: null };
   const isOnline = Boolean(onlineGameSession) || completedSummary?.mode === "ONLINE";
   if (state?.lifecycle !== LIFECYCLE.COMPLETE) {
-    return unavailableResultScreen({ final: true, navigate, online: isOnline, onReturnToLobby });
+    return unavailableResultScreen({ final: true, navigate, router, online: isOnline, onReturnToLobby });
   }
 
   const standings = finalStandingRows(state, (seatId) => seatName(snapshot, seatId));
@@ -362,7 +364,7 @@ export function finalResultScreen({
     ?? state.hand?.index
     ?? Math.max(1, history.length);
 
-  const shell = screenShell({
+  const shell = screenWithMenu({
     id: "final-result",
     context: presentation.context,
     title: presentation.title,
@@ -408,7 +410,9 @@ export function finalResultScreen({
           })
         )
       )
-    ]
+    ],
+    router,
+    menuContent: [actionButton({ label: "Return to Lobby", variant: "secondary", onActivate: () => returnToLobby(navigate, onReturnToLobby) })]
   });
   const disposeFeedback = startResultFeedback(shell, localSession, "match-complete");
   shell.disposeScreen = disposeFeedback;

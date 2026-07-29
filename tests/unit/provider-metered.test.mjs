@@ -82,7 +82,13 @@ test("injected SignallingClient bridge correlates a conditional host-authoritati
     installationId: "host-installation",
     hostHandler(envelope) {
       if (envelope.operation === "listTables") {
-        return { table: { tableId: "table_1", visibility: "OPEN", providerScope: "crazy-rummy/v1/host/table_1" } };
+        return {
+          table: {
+            tableId: "table_1", visibility: "OPEN", providerScope: "crazy-rummy/v1/host/table_1",
+            protocolVersion: 1, rulesVersion: 1
+          },
+          incompatibleOpenTableCount: 0
+        };
       }
       assert.equal(envelope.mutation.expectedTableVersion, 4);
       assert.equal(envelope.payload.lease.requestedTtlMs, 10_000);
@@ -128,6 +134,7 @@ test("host creates, advertises, conditionally seats, and expires a transient Ope
   assert.ok(FakeSignallingClient.instances[0].published.some((entry) => entry.data.type === "crazy-rummy/table-advertisement"));
   const listed = await guest.listTables({ protocolVersion: "v1", rulesVersion: "r1" });
   assert.equal(listed.tables[0].tableId, created.table.tableId);
+  assert.equal(listed.incompatibleOpenTableCount, 0);
   const joined = await guest.joinTable({
     tableId: created.table.tableId, player: { playerId: "guest_user", displayName: "Guest" }, protocolVersion: "v1", rulesVersion: "r1", expectedRevision: 1,
   });
@@ -174,7 +181,9 @@ test("Closed invites stay off discovery and route lookup and join through the ha
     { code: "NOT_FOUND" },
   );
   assert.equal(FakeSignallingClient.instances[0].published.some((entry) => entry.data.type === "crazy-rummy/table-advertisement"), false);
-  assert.deepEqual(await guest.listTables({ protocolVersion: "v1", rulesVersion: "r1" }), { tables: [] });
+  assert.deepEqual(await guest.listTables({ protocolVersion: "v1", rulesVersion: "r1" }), {
+    tables: [], incompatibleOpenTableCount: 0
+  });
   const lookedUp = await guest.lookupTable({ code: created.invite.code, protocolVersion: "v1", rulesVersion: "r1" });
   assert.equal(lookedUp.table.tableId, created.table.tableId);
   const joined = await guest.joinTable({
@@ -226,8 +235,33 @@ test("host authority starts a match with two accepted, ready players", async () 
   const started = await authority.handle(request("startMatch", {
     tableId: table.tableId, hostId: "host_two"
   }, channel, "start_two", table.revision));
-  assert.equal(started.table.status, "STARTED");
+  assert.equal(started.table.status, "CONNECTING");
   assert.equal(started.bootstrap.seats.length, 2);
+  const confirmed = await authority.handle(request("confirmStart", {
+    tableId: table.tableId, hostId: "host_two"
+  }, channel, "confirm_two", started.table.revision));
+  assert.equal(confirmed.table.status, "STARTED");
+});
+
+test("Metered discovery reports incompatible open tables without returning their table data", async () => {
+  FakeSignallingClient.reset();
+  const authority = createMeteredHostTableService({ requestRateLimitMs: 0, leaseMs: 10_000 });
+  const host = createMeteredService({
+    SignallingClient: FakeSignallingClient, apiKey: KEY, config: { ...CONFIG, requestTimeoutMs: 500 },
+    installationId: "metadata-host", hostTableService: authority,
+  });
+  const guest = createMeteredService({
+    SignallingClient: FakeSignallingClient, apiKey: KEY, config: { ...CONFIG, requestTimeoutMs: 500 },
+    installationId: "metadata-guest",
+  });
+  await host.createTable({
+    host: { playerId: "metadata_host", displayName: "Host" }, visibility: "OPEN", capacity: 2,
+    protocolVersion: "v2", rulesVersion: "r2",
+  });
+  const listed = await guest.listTables({ protocolVersion: "v1", rulesVersion: "r1" });
+  assert.deepEqual(listed.tables, []);
+  assert.equal(listed.incompatibleOpenTableCount, 1);
+  await Promise.all([host.close(), guest.close()]);
 });
 
 test("host authority caches idempotent mutations and rejects stale or final-seat races", async () => {

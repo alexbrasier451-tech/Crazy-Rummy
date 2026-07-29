@@ -17,12 +17,13 @@
     "test:online-lobby": "node tests/browser/online-lobby.mjs",
     "test:online-transport": "node tests/browser/online-transport.mjs",
     "test:online-game": "node tests/browser/online-game.mjs",
+    "test:game-flow": "node tests/browser/game-flow.mjs",
     "test:pwa": "node tests/browser/pwa.mjs",
     "test:github-pages": "node tests/browser/github-pages.mjs",
     "test:local-game": "node tests/browser/local-game.mjs",
     "test:stage7-results": "node tests/browser/stage7-results.mjs",
     "test:stage7": "pnpm test:smoke && pnpm test:stage7-results && pnpm test:local-game",
-    "check": "pnpm test:unit && pnpm build && pnpm test:online-lobby && pnpm test:online-transport && pnpm test:online-game && pnpm test:pwa && pnpm test:github-pages && pnpm test:stage7"
+    "check": "pnpm test:unit && pnpm build && pnpm test:online-lobby && pnpm test:online-transport && pnpm test:online-game && pnpm test:game-flow && pnpm test:pwa && pnpm test:github-pages && pnpm test:stage7"
   },
   "devDependencies": {
     "playwright": "^1.55.0",
