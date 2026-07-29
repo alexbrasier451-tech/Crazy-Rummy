@@ -13,6 +13,39 @@ function parsed(storage, key) {
   return JSON.parse(storage.getItem(key)).value;
 }
 
+test("online identities are device-unique and migrate the shared fixture identity once", () => {
+  const first = createLocalGameSession({
+    storage: createMemoryStorage(),
+    createPlayerId: () => "local-device-one"
+  });
+  const second = createLocalGameSession({
+    storage: createMemoryStorage(),
+    createPlayerId: () => "local-device-two"
+  });
+  assert.equal(first.getSnapshot().identity.playerId, "local-device-one");
+  assert.equal(second.getSnapshot().identity.playerId, "local-device-two");
+
+  const legacyStorage = createMemoryStorage({
+    [LOCAL_STORAGE_KEYS.identity]: JSON.stringify({
+      version: 1,
+      value: { playerId: "player-north", displayName: "Alex" }
+    })
+  });
+  const migrated = createLocalGameSession({
+    storage: legacyStorage,
+    createPlayerId: () => "local-migrated-device"
+  });
+  assert.deepEqual(migrated.getSnapshot().identity, {
+    playerId: "local-migrated-device",
+    displayName: "Alex"
+  });
+  const reloaded = createLocalGameSession({
+    storage: legacyStorage,
+    createPlayerId: () => "local-should-not-replace"
+  });
+  assert.equal(reloaded.getSnapshot().identity.playerId, "local-migrated-device");
+});
+
 test("local sessions support a two-player fixture", () => {
   const session = createLocalGameSession({
     storage: createMemoryStorage(),

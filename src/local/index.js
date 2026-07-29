@@ -29,6 +29,9 @@ export const LOCAL_STORAGE_KEYS = Object.freeze({
 export const DEFAULT_LOCAL_SEATS = Object.freeze(["north", "east", "south"]);
 export const DEFAULT_LOCAL_GAME_ID = "local-fixture";
 export const DEFAULT_LOCAL_SHUFFLE_SEED = "local-fixture-seed";
+const LEGACY_FIXTURE_PLAYER_IDS = new Set(
+  DEFAULT_LOCAL_SEATS.map((seatId) => `player-${seatId}`)
+);
 // Re-export the command/lifecycle vocabulary needed by a local UI without
 // making it reach into an engine implementation module.
 export { COMMAND_TYPE, LIFECYCLE, PHASE };
@@ -100,6 +103,12 @@ function defaultStorage() {
   } catch {
     return createMemoryStorage();
   }
+}
+
+function defaultOnlinePlayerId() {
+  const suffix = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `local-${suffix}`;
 }
 
 function normalizeSeats(seats) {
@@ -188,10 +197,19 @@ export function createLocalGameSession(options = {}) {
   const seatIds = Object.keys(state.seats);
   let localSeatId = readRecord(storage, LOCAL_STORAGE_KEYS.localSeat) ?? options.localSeatId ?? seatIds[0];
   if (!seatIds.includes(localSeatId)) localSeatId = seatIds[0];
-  let identity = readRecord(storage, LOCAL_STORAGE_KEYS.identity) ?? copy(options.identity ?? {
-    playerId: state.seats[localSeatId].playerId,
-    displayName: state.seats[localSeatId].displayName
-  });
+  const storedIdentity = readRecord(storage, LOCAL_STORAGE_KEYS.identity);
+  const createPlayerId = options.createPlayerId ?? defaultOnlinePlayerId;
+  if (typeof createPlayerId !== "function") throw new TypeError("createPlayerId must be a function.");
+  const legacyStoredIdentity = isRecord(storedIdentity)
+    && LEGACY_FIXTURE_PLAYER_IDS.has(storedIdentity.playerId);
+  let identity = copy(
+    legacyStoredIdentity
+      ? { ...storedIdentity, playerId: createPlayerId() }
+      : storedIdentity ?? options.identity ?? {
+        playerId: createPlayerId(),
+        displayName: state.seats[localSeatId].displayName
+      }
+  );
   let preferences = readRecord(storage, LOCAL_STORAGE_KEYS.preferences) ?? copy(options.preferences ?? {});
   if (!isRecord(identity)) identity = {};
   if (!isRecord(preferences)) preferences = {};

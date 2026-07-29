@@ -33,7 +33,7 @@ export function createConfiguredOnlineLobbySession({
   SignallingClientClass = SignallingClient,
   protocolVersion = DEFAULT_PROTOCOL_VERSION,
   rulesVersion = LOBBY_RULES_VERSION,
-  installationId = player?.playerId,
+  installationId,
   clock,
   scheduler,
   random,

@@ -63,12 +63,19 @@ class WorkingSignallingClient extends FailingSignallingClient {
 }
 
 class LobbySignallingClient extends WorkingSignallingClient {
+  static instances = [];
+  constructor(...args) {
+    super(...args);
+    this.published = [];
+    LobbySignallingClient.instances.push(this);
+  }
   async subscribe() {
     assert.equal(this.state, "connected");
   }
   async unsubscribe() {}
-  async publish() {
+  async publish(channel, data) {
     assert.equal(this.state, "connected");
+    this.published.push({ channel, data });
   }
 }
 
@@ -87,6 +94,30 @@ test("configured lobby refreshes do not trip a second client-side read limit", a
   assert.equal(session.getSnapshot().error, null);
   assert.equal(session.getSnapshot().presence.status, "online");
   session.dispose();
+});
+
+test("configured lobbies use distinct realtime installation IDs even for the same player identity", async () => {
+  LobbySignallingClient.instances = [];
+  const options = {
+    player: { playerId: "shared-player-id", displayName: "Shared player" },
+    publicKey: "pk_live_test",
+    SignallingClientClass: LobbySignallingClient,
+    autoRefresh: false,
+    discoveryWindowMs: 50,
+  };
+  const first = createConfiguredOnlineLobbySession(options);
+  const second = createConfiguredOnlineLobbySession(options);
+
+  await Promise.all([first.goOnline(), second.goOnline()]);
+  const installationIds = LobbySignallingClient.instances.map((client) =>
+    client.published.find((entry) => entry.data.type === "crazy-rummy/discovery-request")
+      ?.data.installationId
+  );
+  assert.equal(new Set(installationIds).size, 2);
+  assert.equal(installationIds.includes("shared-player-id"), false);
+
+  first.dispose();
+  second.dispose();
 });
 
 class PassiveRtcConnection {
