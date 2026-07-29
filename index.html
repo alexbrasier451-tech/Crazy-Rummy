@@ -116,14 +116,14 @@
       </section>
 
       <section>
-        <h2>1. Direct-path test</h2>
+        <h2>1. Automatic-path test</h2>
         <ol>
           <li>Confirm the phone shows the same code as this PC.</li>
           <li>On the phone, tap Open phone side on this device.</li>
           <li>On the PC, tap Open desktop side.</li>
-          <li>Both screens should report Passed.</li>
+          <li>Both screens should report Passed and name the selected path.</li>
         </ol>
-        <a id="direct-host" href="#">Open desktop side</a>
+        <a id="direct-host" href="#">Open desktop automatic side</a>
         <button data-copy-link="direct-guest">Copy phone link</button>
         <a id="direct-guest" class="secondary" href="#">Open phone side on this device</a>
       </section>
@@ -143,10 +143,14 @@
 
       <p id="copy-status" role="status" aria-live="polite"></p>
       <p class="note">
+        The automatic test may select direct or relay; either is a valid game
+        connection. The forced-TURN test must select relay.
+      </p>
+      <p class="note">
         The free allowance has hard caps. If it is exhausted, online relay
         stops rather than creating a charge.
       </p>
     </main>
-    <script src="./launcher.js?v=3"></script>
+    <script src="./launcher.js?v=4"></script>
   </body>
 </html>
