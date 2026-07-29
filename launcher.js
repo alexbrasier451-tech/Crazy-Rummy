@@ -1,4 +1,9 @@
-const seed = crypto.randomUUID().replaceAll("-", "");
+const storageKey = "crazy-rummy-network-test-seed";
+let seed = sessionStorage.getItem(storageKey);
+if (!/^[a-f0-9]{32}$/.test(seed || "")) {
+  seed = crypto.randomUUID().replaceAll("-", "");
+  sessionStorage.setItem(storageKey, seed);
+}
 setLink("direct-host", `crazy-rummy-direct-${seed}`, "host", "all");
 setLink("direct-guest", `crazy-rummy-direct-${seed}`, "guest", "all");
 setLink("relay-host", `crazy-rummy-relay-${seed}`, "host", "relay");
@@ -20,4 +25,8 @@ for (const button of document.querySelectorAll("[data-copy-link]")) {
 function setLink(id, room, role, policy) {
   const link = document.querySelector(`#${id}`);
   link.href = `./probe.html?room=${encodeURIComponent(room)}&role=${role}&policy=${policy}`;
+  if (role === "host") {
+    link.target = "_blank";
+    link.rel = "noopener";
+  }
 }
