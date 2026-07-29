@@ -38,13 +38,14 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
 
   const rerender = () => {
     const online = Boolean(snapshot.online);
+    const busy = Boolean(pending);
     const tables = Array.isArray(snapshot.tables) ? snapshot.tables.map(tableSummary) : [];
     const items = [connectionFor(snapshot)];
     const actions = stack(
       actionButton({ label: online ? "Go offline" : "Go online", variant: online ? "secondary" : "primary", pending: pending === "presence", onActivate: () => run("presence", online ? "goOffline" : "goOnline") }),
-      actionButton({ label: "Create a table", disabled: !online, onActivate: () => { createOpen = !createOpen; rerender(); } }),
-      actionButton({ label: "Join with a code", variant: "secondary", disabled: !online, onActivate: () => { joinOpen = !joinOpen; rerender(); } }),
-      actionButton({ label: "Refresh now", variant: "quiet", disabled: !online, pending: pending === "refresh", onActivate: () => run("refresh", "refresh") })
+      actionButton({ label: "Create a table", disabled: !online || busy, onActivate: () => { createOpen = !createOpen; rerender(); } }),
+      actionButton({ label: "Join with a code", variant: "secondary", disabled: !online || busy, onActivate: () => { joinOpen = !joinOpen; rerender(); } }),
+      actionButton({ label: "Refresh now", variant: "quiet", disabled: !online || busy, pending: pending === "refresh", onActivate: () => run("refresh", "refresh") })
     );
     items.push(actions);
     if (message) items.push(element("p", { className: "online-message", role: "status", text: message }));
@@ -63,7 +64,7 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
         visibilityChoice("CLOSED", "Closed table", "Never listed publicly; players need a join code or link.")),
       copy("Rules: Crazy Rummy · 13 hands. Only this confirmed rules preset is available."),
       routeLink("View rules for this table", "/rules", "quiet"),
-      actionButton({ label: "Create table", type: "submit", pending: pending === "create" })
+      actionButton({ label: "Create table", type: "submit", disabled: busy, pending: pending === "create" })
       );
       items.push(form);
     }
@@ -74,23 +75,27 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
         const normalized = code.input.value.replace(/[^a-z0-9]/gi, "").toLowerCase();
         if (!normalized) { message = "Enter a table code to continue."; rerender(); return; }
         run("join-code", "joinByCode", { code: normalized });
-      } }, code.wrapper, actionButton({ label: "Find and join table", type: "submit", pending: pending === "join-code" }));
+      } }, code.wrapper, actionButton({ label: "Find and join table", type: "submit", disabled: busy, pending: pending === "join-code" }));
       items.push(form);
     }
     const tableCards = tables.map((table) => element("article", { className: "table-card", dataset: { tableId: table.id } },
       element("h3", { text: `${table.name} · ${table.occupied}/${table.capacity || "?"}` }),
       copy(`Hosted by ${table.host} · ${table.state.toLowerCase()} · ${table.rules}`),
-      actionButton({ label: "Preview table", variant: "secondary", disabled: !online, onActivate: () => { preview = table; rerender(); } })
+      actionButton({ label: "Preview table", variant: "secondary", disabled: !online || busy, onActivate: () => { preview = table; rerender(); } })
     ));
     items.push(panel("Open tables", copy(`${tables.length} open · ${freshnessCopy(snapshot)}`), tableCards.length ? tableCards : copy("No open tables found right now. Create one or refresh.")));
     if (preview) items.push(element("section", { className: "online-preview", "aria-label": "Table preview" },
       element("h2", { text: preview.name }), copy(`Hosted by ${preview.host} · ${preview.occupied}/${preview.capacity} seats · ${preview.rules}`),
-      actionButton({ label: "Join table", pending: pending === "join", onActivate: () => run("join", "joinTable", { tableId: preview.id }) })
+      actionButton({ label: "Join table", disabled: busy, pending: pending === "join", onActivate: () => run("join", "joinTable", { tableId: preview.id }) })
     ));
     content.replaceChildren(...items);
   };
   const run = async (name, method, args) => {
-    if (pending) return;
+    if (pending) {
+      message = "The lobby is still finishing the previous request. Please wait.";
+      rerender();
+      return;
+    }
     pending = name; message = null; rerender();
     try {
       await onlineSession[method]?.(args);

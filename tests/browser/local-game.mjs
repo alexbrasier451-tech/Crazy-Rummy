@@ -28,6 +28,22 @@ function workspace(page) {
   return page.locator('[data-game-workspace="local"]');
 }
 
+async function showGameDetails(page) {
+  if (await control(page, "developer-seat").count()) return;
+  await control(page, "toggle-game-details").click();
+  await control(page, "developer-seat").waitFor();
+}
+
+async function openActions(page) {
+  await control(page, "open-actions").click();
+  await page.locator('[data-game-sheet="actions"]').waitFor();
+}
+
+async function takeAction(page, name) {
+  await openActions(page);
+  await control(page, name).click();
+}
+
 async function phase(page) {
   await workspace(page).waitFor({ state: "attached" });
   return workspace(page).getAttribute("data-phase");
@@ -45,6 +61,7 @@ async function activeSeatId(page) {
 }
 
 async function selectActiveSeat(page, { mayCompleteHand = false } = {}) {
+  await showGameDetails(page);
   const seatControl = control(page, "developer-seat");
   if (mayCompleteHand) {
     const outcome = await Promise.race([
@@ -126,7 +143,7 @@ async function discardFirstPrivateCard(page, label) {
   const card = await firstPrivateCard(page);
   await card.tap();
   const before = await revision(page);
-  await control(page, "discard").click();
+  await takeAction(page, "discard");
   await control(page, "confirm-discard").click();
   await Promise.race([
     page.waitForURL(/#\/hand-result$/),
@@ -147,11 +164,11 @@ async function playOrdinaryTurnsUntilHandComplete(page) {
     const currentPhase = await phase(page);
     if (!await selectActiveSeat(page, { mayCompleteHand: true })) return;
     if (currentPhase === "AWAITING_DRAW") {
-      await expectOneAcceptedRevision(page, () => control(page, "draw-stock").click(), "stock draw");
+      await expectOneAcceptedRevision(page, () => takeAction(page, "draw-stock"), "stock draw");
       continue;
     }
     if (currentPhase === "TABLE_PLAY") {
-      await expectOneAcceptedRevision(page, () => control(page, "finish-table-play").click(), "table finish");
+      await expectOneAcceptedRevision(page, () => takeAction(page, "finish-table-play"), "table finish");
       continue;
     }
     if (currentPhase === "AWAITING_DISCARD") {
@@ -186,6 +203,17 @@ try {
     "shared player DOM must never expose private card identities");
   assert.equal(await page.locator('[data-shared-players] [data-private-hand]').count(), 0,
     "shared player DOM must never contain a private-hand tray");
+  assert.equal(await workspace(page).evaluate((node) => [...node.childNodes]
+    .some((child) => child.nodeType === Node.TEXT_NODE && child.textContent === "null")), false,
+  "local mode must not render an empty online-connection placeholder");
+  assert.equal(await control(page, "developer-seat").count(), 0,
+    "nonessential game context should be collapsed initially");
+  await openActions(page);
+  await page.getByRole("dialog", { name: "Actions" }).waitFor();
+  await control(page, "close-actions").click();
+  await control(page, "open-actions").focus();
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.gameControl), "open-actions",
+    "closing the action sheet should restore focus to its trigger");
 
   await selectActiveSeat(page);
   const openingCard = await firstPrivateCard(page);
@@ -199,7 +227,7 @@ try {
   await page.keyboard.press("Space");
   await expectOneAcceptedRevision(
     page,
-    () => control(page, "discard").click()
+    () => takeAction(page, "discard")
       .then(() => control(page, "confirm-opening-discard").click()),
     "dealer opening discard"
   );
@@ -207,12 +235,12 @@ try {
   await refreshPreservesAcceptedState(page, "AWAITING_DRAW", "awaiting draw");
 
   await selectActiveSeat(page);
-  await expectOneAcceptedRevision(page, () => control(page, "draw-stock").click(), "first stock draw");
+  await expectOneAcceptedRevision(page, () => takeAction(page, "draw-stock"), "first stock draw");
   assert.equal(await phase(page), "TABLE_PLAY");
   await refreshPreservesAcceptedState(page, "TABLE_PLAY", "table play");
 
   await chooseCards(page, ["diamonds:10"]);
-  await control(page, "open-meld").click();
+  await takeAction(page, "open-meld");
   await page.getByRole("radio", { name: "Set" }).check();
   await control(page, "place-meld").click();
   assert.match(
@@ -227,7 +255,7 @@ try {
   await clearSelection(page);
 
   await chooseCards(page, ["diamonds:10", "clubs:10", "clubs:A"]);
-  await control(page, "open-meld").click();
+  await takeAction(page, "open-meld");
   await page.getByRole("radio", { name: "Set" }).check();
   await page.getByLabel("Wild represents rank for Ace of clubs").selectOption("10");
   await expectOneAcceptedRevision(page, () => control(page, "place-meld").click(), "opening set");
@@ -241,7 +269,7 @@ try {
   );
   await refreshPreservesAcceptedState(page, "TABLE_PLAY", "accepted opening meld");
 
-  await expectOneAcceptedRevision(page, () => control(page, "finish-table-play").click(), "finish table play");
+  await expectOneAcceptedRevision(page, () => takeAction(page, "finish-table-play"), "finish table play");
   assert.equal(await phase(page), "AWAITING_DISCARD");
   await refreshPreservesAcceptedState(page, "AWAITING_DISCARD", "awaiting discard");
   await discardFirstPrivateCard(page, "first turn discard");
@@ -262,6 +290,7 @@ try {
   await page.getByRole("button", { name: "All fixture seats continue" }).click();
   await page.waitForURL(/#\/game$/);
 
+  await showGameDetails(page);
   await control(page, "run-automated-match").click();
   await page.waitForURL(/#\/final-result$/);
   const finalResult = page.locator('[data-screen="final-result"]');

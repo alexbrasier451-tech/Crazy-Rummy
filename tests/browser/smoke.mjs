@@ -121,7 +121,18 @@ try {
 
   await page.goto(`${testServer.origin}/#/`, { waitUntil: "domcontentloaded" });
   await assertTapTargets(page, "Startup");
-  await page.getByRole("button", { name: "First launch: choose your seat" }).click();
+  const splashArt = page.getByRole("img", {
+    name: "Dogs and cats playing cards together in a moonlit railway carriage."
+  });
+  await splashArt.waitFor();
+  await page.waitForFunction(() =>
+    document.querySelector(".splash-card__art")?.naturalWidth > 0
+  );
+  assert.equal(await page.getByText("Crazy Rummy", { exact: true }).count() >= 1, true);
+  await page.getByText("A game by Alex Brasier", { exact: true }).waitFor();
+  await page.getByText("13 hands · 2–6 players · one wild ride", { exact: true }).waitFor();
+  await assertNoHorizontalOverflow(page, "Splash at 390px");
+  await page.getByRole("button", { name: "Change player" }).click();
   await page.waitForURL(/#\/identity$/);
   await page.getByRole("button", { name: "Save and continue" }).click();
   await page.waitForURL(/#\/lobby$/);
@@ -211,7 +222,10 @@ try {
   await page.addStyleTag({ content: "html { font-size: 400% !important; }" });
   await assertNoHorizontalOverflow(page, "Game at 320-equivalent 400% zoom reflow");
   const activeSeatId = await page.locator('[data-game-workspace="local"]').getAttribute("data-active-seat-id");
+  await page.locator('[data-game-control="toggle-game-details"]').click();
   await page.locator('[data-game-control="developer-seat"]').selectOption(activeSeatId);
+  await page.locator('[data-private-hand] button.playing-card').first().click();
+  await page.locator('[data-game-control="open-actions"]').click();
   const primaryAction = page.locator('[data-game-control="discard"]');
   await primaryAction.scrollIntoViewIfNeeded();
   const actionBox = await primaryAction.boundingBox();
@@ -219,7 +233,6 @@ try {
   assert.ok(actionBox && actionBox.y >= 0 && actionBox.y + actionBox.height <= viewport.height);
 
   await page.setViewportSize({ width: 320, height: 568 });
-  await page.locator('[data-private-hand] button.playing-card').first().click();
   await primaryAction.click();
   const confirmOpening = page.locator('[data-game-control="confirm-opening-discard"]');
   await confirmOpening.scrollIntoViewIfNeeded();

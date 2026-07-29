@@ -19,6 +19,23 @@ try {
   });
 
   await page.getByRole("heading", { name: "Open tables" }).waitFor();
+  await page.evaluate(() => globalThis.onlineHarness.mountLobbyDuringInitialRefresh());
+  await page.getByRole("button", { name: "Go online" }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll("button")]
+    .find((button) => button.textContent.includes("Create a table"))?.disabled === true);
+  assert.equal(await page.getByRole("button", { name: "Create a table" }).isDisabled(), true,
+    "creation must remain unavailable while the initial online refresh owns the lobby request");
+  await page.evaluate(() => globalThis.onlineHarness.finishInitialRefresh());
+  await page.getByRole("button", { name: "Create a table" }).waitFor({ state: "visible" });
+  await page.waitForFunction(() => ![...document.querySelectorAll("button")]
+    .find((button) => button.textContent.includes("Create a table"))?.disabled);
+  await page.getByRole("button", { name: "Create a table" }).click();
+  await page.getByLabel("Closed table").check();
+  await page.getByRole("button", { name: "Create table" }).click();
+  await page.waitForFunction(() => document.body.dataset.lastNavigation === "/waiting-room");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Open tables" }).waitFor();
   await page.getByRole("button", { name: "Create a table" }).click();
   assert.deepEqual(
     await page.getByLabel("Seats (2–6)").locator("option").allTextContents(),

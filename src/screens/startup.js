@@ -1,7 +1,6 @@
 import {
   actionButton,
-  actionLink,
-  connectionState
+  actionLink
 } from "../components/index.js";
 import {
   copy,
@@ -14,37 +13,46 @@ import {
   stack
 } from "./helpers.js";
 
+const SPLASH_ART_URL = `${import.meta.env.BASE_URL}art/crazy-rummy-splash.v1.png`;
+
 export function startupScreen({ navigate, localSession }) {
   const savedIdentity = localSession?.getSnapshot?.().identity;
-  const offlineState = connectionState({
-    state: "offline",
-    label: "Offline example",
-    detail:
-      "You’re offline. Rules and your last received table are available; online play will resume when you reconnect."
-  });
+  const hasSeat = Boolean(savedIdentity?.displayName);
 
   return screenShell({
     id: "startup",
-    context: "Crazy Rummy",
-    title: "Taking your seat…",
+    context: "Night-train card room",
+    title: "Crazy Rummy",
     status: copy(
-      savedIdentity?.displayName
-        ? `Local seat ready for ${savedIdentity.displayName}.`
-        : "Choose a local display name to continue."
+      hasSeat
+        ? `Welcome back, ${savedIdentity.displayName}. Your seat is ready.`
+        : "Thirteen hands. Moving wilds. Two to six players."
     ),
     kind: "startup",
     content: [
       element(
-        "div",
-        { className: "brand-lockup", "aria-label": "Crazy Rummy, thirteen stops" },
-        element("span", { className: "brand-mark", "aria-hidden": "true", text: "◆ ━ ◇" }),
-        element("strong", { text: "Crazy Rummy" }),
-        element("span", { text: "13 stops" })
+        "section",
+        { className: "splash-card", "aria-label": "Crazy Rummy welcome" },
+        element("img", {
+          className: "splash-card__art",
+          src: SPLASH_ART_URL,
+          alt: "Dogs and cats playing cards together in a moonlit railway carriage."
+        }),
+        element(
+          "div",
+          { className: "splash-card__title" },
+          element("span", { text: "All aboard for" }),
+          element("strong", { text: "Crazy Rummy" }),
+          element("span", { text: "A game by Alex Brasier" })
+        ),
+        element("p", {
+          className: "splash-card__ticket",
+          text: "13 hands · 2–6 players · one wild ride"
+        })
       ),
-      offlineState,
       stack(
-        routeButton("First launch: choose your seat", "/identity", navigate),
-        routeButton("Returning player: open Lobby", "/lobby", navigate, "secondary"),
+        routeButton(hasSeat ? "Enter the lobby" : "Choose your player", hasSeat ? "/lobby" : "/identity", navigate),
+        routeButton(hasSeat ? "Change player" : "I already have a seat", hasSeat ? "/identity" : "/lobby", navigate, "secondary"),
         routeLink("Read cached rules", "/rules", "quiet")
       )
     ]

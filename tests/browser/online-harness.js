@@ -123,9 +123,47 @@ await host.createTable({ visibility: "OPEN", capacity: 6 });
 await guest.goOnline();
 renderLobby(players[1]);
 
+let pendingRefreshResolve = null;
+let pendingLobbySession = null;
+const pendingLobbyPlayer = { playerId: "pending_001", displayName: "Pending Pat" };
+
+function mountLobbyDuringInitialRefresh() {
+  const base = createFakeLobbyService();
+  let firstList = true;
+  const delayedService = {
+    ...base,
+    listTables(input) {
+      if (!firstList) return base.listTables(input);
+      firstList = false;
+      return new Promise((resolve) => { pendingRefreshResolve = () => resolve(base.listTables(input)); });
+    }
+  };
+  pendingLobbySession = createOnlineLobbySession({
+    service: delayedService,
+    player: pendingLobbyPlayer,
+    ...versions,
+    scheduler,
+    jitterRatio: 0
+  });
+  mount(lobbyScreen({
+    navigate: (path) => { document.body.dataset.lastNavigation = path; },
+    router,
+    onlineSession: pendingLobbySession
+  }));
+}
+
+async function finishInitialRefresh() {
+  pendingRefreshResolve?.();
+  await new Promise((resolve) => queueMicrotask(resolve));
+  await new Promise((resolve) => queueMicrotask(resolve));
+  return pendingLobbySession?.getSnapshot?.();
+}
+
 globalThis.onlineHarness = Object.freeze({
   fillOpenRoom,
   startClosedJourney,
   prepareTwoPlayerStart,
+  mountLobbyDuringInitialRefresh,
+  finishInitialRefresh,
   matchStartAttempts: () => matchStartAttempts
 });

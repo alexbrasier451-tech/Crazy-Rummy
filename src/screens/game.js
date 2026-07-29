@@ -178,7 +178,8 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     queuedActions: new Map(),
     handledLastActions: new Set(),
     previousNetworkMode: null,
-    networkAnnouncements: new Set()
+    networkAnnouncements: new Set(),
+    showDetails: false
   };
 
   const workspace = element("div", {
@@ -401,6 +402,11 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
 
   function openSheet(kind) {
     ui.sheetReturnFocus = document.activeElement;
+    ui.sheet = kind;
+    render();
+  }
+
+  function openActionSubsheet(kind) {
     ui.sheet = kind;
     render();
   }
@@ -667,16 +673,20 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     });
   }
 
-  function actionDock(view, hand, localSeatId, cards) {
+  function actionMenuSheet(view, hand, localSeatId, cards) {
     const mine = hand.activeSeatId === localSeatId;
     const copyForPhase = phaseCopy(hand.phase, mine);
     const controls = [];
+    const runFromMenu = (type, payload = {}, options = {}) => {
+      ui.sheet = null;
+      void execute(type, payload, options);
+    };
     if (!mine) {
       controls.push(copy(`${nameForSeat(view, hand.activeSeatId)} is taking their turn. You can still sort your private hand.`));
     } else if (copyForPhase.step === "draw") {
       controls.push(
-        commandButton("Draw from stock", () => execute("DRAW_STOCK"), { variant: "primary", disabled: gameplayIsBlocked() || hand.stockCount < 1, name: "draw-stock" }),
-        commandButton("Take discard", () => execute("DRAW_DISCARD"), { disabled: gameplayIsBlocked() || !hand.discardCardIds?.length, name: "draw-discard" })
+        commandButton("Draw from stock", () => runFromMenu("DRAW_STOCK"), { variant: "primary", disabled: gameplayIsBlocked() || hand.stockCount < 1, name: "draw-stock" }),
+        commandButton("Take discard", () => runFromMenu("DRAW_DISCARD"), { disabled: gameplayIsBlocked() || !hand.discardCardIds?.length, name: "draw-discard" })
       );
     } else if (copyForPhase.step === "play") {
       controls.push(
@@ -684,17 +694,17 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           const chosen = selectedOrAnnounce(cards);
           if (!chosen) return;
           ui.composer = { type: "RUN", order: chosen, representations: {} };
-          openSheet("compose");
+          openActionSubsheet("compose");
         }, { variant: "primary", disabled: gameplayIsBlocked(), name: "open-meld" }),
         commandButton("Add to table", () => {
           if (!selectedOrAnnounce(cards)) return;
-          openSheet("layoff");
+          openActionSubsheet("layoff");
         }, { disabled: gameplayIsBlocked() || !hand.melds.length, name: "add-to-table" }),
         commandButton("Replace a wild", () => {
           if (!selectedOrAnnounce(cards, "Select the natural replacement card first.")) return;
-          openSheet("replace");
+          openActionSubsheet("replace");
         }, { disabled: gameplayIsBlocked(), name: "replace-wild" }),
-        commandButton("Finish table play", () => execute("FINISH_TABLE_PLAY"), { disabled: gameplayIsBlocked(), name: "finish-table-play" })
+        commandButton("Finish table play", () => runFromMenu("FINISH_TABLE_PLAY"), { disabled: gameplayIsBlocked(), name: "finish-table-play" })
       );
     } else if (copyForPhase.step === "discard") {
       const opening = hand.phase === "DEALER_INITIAL_DISCARD";
@@ -703,22 +713,57 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
         opening ? "Choose opening discard" : (quickConfirm ? "Discard selected card" : "Discard…"),
         () => {
           if (quickConfirm) {
+            ui.sheet = null;
             quickDiscard(cards);
             return;
           }
           if (!selectedOrAnnounce(cards, "Select exactly one card to discard.")) return;
-          openSheet("discard");
+          openActionSubsheet("discard");
         },
         { variant: "danger", disabled: gameplayIsBlocked(), name: "discard" }
       ));
     } else if (copyForPhase.step === "complete") {
-      controls.push(commandButton("Acknowledge hand result", () => execute("ACKNOWLEDGE_HAND_RESULT"), { variant: "primary", disabled: gameplayIsBlocked(), name: "acknowledge-hand" }));
+      controls.push(commandButton("Acknowledge hand result", () => runFromMenu("ACKNOWLEDGE_HAND_RESULT"), { variant: "primary", disabled: gameplayIsBlocked(), name: "acknowledge-hand" }));
     }
-    return element("section", { className: "action-dock game-action-dock", "aria-labelledby": "turn-actions-title", dataset: { phase: hand.phase } },
-      element("h2", { id: "turn-actions-title", text: copyForPhase.title }),
-      copy(copyForPhase.detail),
+    return gameSheet("Actions", copyForPhase.detail, [
       stack(...controls),
-      copy(`Selected: ${ui.selected.size}. Turn: draw → play → discard.`)
+      copy(`Selected: ${ui.selected.size}. Turn: draw → play → discard.`),
+      commandButton("Close actions", closeSheet, { variant: "quiet", name: "close-actions" })
+    ]);
+  }
+
+  function actionLaunch() {
+    const trigger = commandButton("Actions", () => openSheet("actions"), {
+      variant: "primary",
+      disabled: gameplayIsBlocked(),
+      name: "open-actions"
+    });
+    trigger.setAttribute("aria-haspopup", "dialog");
+    return element("section", { className: "game-action-launch", "aria-label": "Game actions" }, trigger);
+  }
+
+  function gameDetails({ developer, hand, activeName }) {
+    const detailsId = "game-details";
+    const toggle = commandButton(
+      ui.showDetails ? "Hide game details" : "Show game details",
+      () => { ui.showDetails = !ui.showDetails; render(); },
+      { variant: "quiet", name: "toggle-game-details" }
+    );
+    toggle.setAttribute("aria-expanded", String(ui.showDetails));
+    toggle.setAttribute("aria-controls", detailsId);
+    const status = element("p", {
+      className: `game-live-message game-live-message--${ui.messageTone}`,
+      role: "note",
+      text: ui.message || `${activeName}'s turn. ${phaseCopy(hand.phase, hand.activeSeatId === current().localSeatId).detail}`
+    });
+    return element("section", { className: "game-details" },
+      toggle,
+      ui.showDetails ? element("div", { id: detailsId, className: "game-details__content" },
+        developer,
+        routeLine({ current: hand.index, total: 13, label: `Hand ${hand.index} of 13`, compact: true }),
+        element("p", { className: "game-turn-status", text: `${activeName}'s turn · ${hand.phase.replaceAll("_", " ")}` }),
+        status
+      ) : null
     );
   }
 
@@ -890,27 +935,22 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     const handSection = element("section", { className: "game-private-hand", "aria-label": "Your private hand" }, tray, sortControls,
       commandButton("Clear selection", () => { ui.selected.clear(); ui.discardConfirm = false; render(); }, { variant: "quiet", disabled: !selected.size, name: "clear-selection" })
     );
-    const status = element("p", {
-      className: `game-live-message game-live-message--${ui.messageTone}`,
-      role: "note",
-      text: ui.message || `${activeName}'s turn. ${phaseCopy(hand.phase, hand.activeSeatId === localSeatId).detail}`
-    });
-    workspace.append(
-      networkPresentation ? connectionState({
+    if (networkPresentation) {
+      workspace.append(connectionState({
         state: networkPresentation.connectionState,
         label: networkPresentation.label,
         detail: networkPresentation.detail,
         announce: false
-      }) : null,
-      developer,
-      routeLine({ current: hand.index, total: 13, label: `Hand ${hand.index} of 13`, compact: true }),
-      element("p", { className: "game-turn-status", text: `${activeName}'s turn · ${hand.phase.replaceAll("_", " ")}` }),
-      status,
+      }));
+    }
+    workspace.append(
+      gameDetails({ developer, hand, activeName }),
       table,
       handSection,
-      actionDock(view, hand, localSeatId, cards)
+      actionLaunch()
     );
     let sheet;
+    if (ui.sheet === "actions") sheet = actionMenuSheet(view, hand, localSeatId, cards);
     if (ui.sheet === "compose") sheet = composerSheet(view, hand, localSeatId, cards);
     if (ui.sheet === "layoff") sheet = layoffSheet(view, hand, cards);
     if (ui.sheet === "replace") sheet = replacementSheet(hand, cards);

@@ -19,6 +19,7 @@ const root = path.resolve(import.meta.dirname, "../..");
 const ART_URLS = [
   "/art/baize-texture.v1.svg",
   "/art/card-back-lattice.v1.svg",
+  "/art/crazy-rummy-splash.v1.png",
   "/art/route-tickets.v1.svg"
 ];
 
@@ -163,7 +164,7 @@ try {
     ART_URLS.map((url) => ({
       url,
       cached: true,
-      contentType: "image/svg+xml"
+      contentType: url.endsWith(".png") ? "image/png" : "image/svg+xml"
     }))
   );
 
