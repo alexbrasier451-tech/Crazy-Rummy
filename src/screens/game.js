@@ -1001,8 +1001,31 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
         + "You can keep Actions open while you review the table or sort your private hand."
       ));
     } else if (copyForPhase.step === "draw") {
+      const currentDiscardCardId = hand.discardCardIds?.at(-1);
+      const discardPreview = element(
+        "div",
+        {
+          className: "game-draw-discard-preview",
+          "aria-label": currentDiscardCardId
+            ? `Current discard: ${cardDisplayName(currentDiscardCardId)}`
+            : "No current discard",
+          dataset: { gameCurrentDiscard: currentDiscardCardId ?? "none" }
+        },
+        element(
+          "span",
+          { className: "game-draw-discard-preview__copy" },
+          element("strong", { text: "Current discard" }),
+          element("span", {
+            text: currentDiscardCardId ? cardDisplayName(currentDiscardCardId) : "None available"
+          })
+        ),
+        currentDiscardCardId
+          ? cardNode(currentDiscardCardId, { wildRank: hand.wildRank })
+          : null
+      );
       controls.push(
         commandButton("Draw from stock", () => runFromMenu("DRAW_STOCK"), { variant: "primary", disabled: gameplayIsBlocked() || hand.stockCount < 1, name: "draw-stock" }),
+        discardPreview,
         commandButton("Take discard", () => runFromMenu("DRAW_DISCARD"), { disabled: gameplayIsBlocked() || !hand.discardCardIds?.length, name: "draw-discard" })
       );
     } else if (copyForPhase.step === "play") {

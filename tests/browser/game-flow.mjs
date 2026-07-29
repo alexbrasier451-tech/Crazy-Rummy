@@ -58,6 +58,11 @@ try {
   await automaticDrawMenu.waitFor();
   await page.locator('[data-game-control="draw-stock"]').waitFor();
   await page.locator('[data-game-control="draw-discard"]').waitFor();
+  const discardPreview = automaticDrawMenu.locator('[data-game-current-discard="hearts:K"]');
+  await discardPreview.waitFor();
+  assert.match(await discardPreview.getAttribute("aria-label"), /Current discard: King of hearts/);
+  assert.equal(await discardPreview.locator('[data-card-id="hearts:K"]').count(), 1,
+    "the draw menu should show the actual current discard without requiring a table view");
   assert.equal(await page.locator('[data-game-control="open-actions"]').getAttribute("aria-expanded"), "true",
     "a newly active local draw turn should open its draw choices without an Actions-button press");
 

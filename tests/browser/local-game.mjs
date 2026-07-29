@@ -316,6 +316,13 @@ try {
   await automaticDrawMenu.waitFor();
   await control(page, "draw-stock").waitFor();
   await control(page, "draw-discard").waitFor();
+  const tableDiscardCardId = await page.locator(".stock-discard > :last-child [data-card-id]").getAttribute("data-card-id");
+  assert.ok(tableDiscardCardId, "the normal draw turn should have a current discard");
+  assert.equal(
+    await automaticDrawMenu.locator("[data-game-current-discard]").getAttribute("data-game-current-discard"),
+    tableDiscardCardId,
+    "the automatic draw menu should repeat the current table discard"
+  );
   assert.equal(await control(page, "open-actions").getAttribute("aria-expanded"), "true",
     "switching to the active player's draw turn should reveal draw choices automatically");
   await control(page, "close-actions").click();
