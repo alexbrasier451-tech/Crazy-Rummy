@@ -676,13 +676,17 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
   function actionMenuSheet(view, hand, localSeatId, cards) {
     const mine = hand.activeSeatId === localSeatId;
     const copyForPhase = phaseCopy(hand.phase, mine);
+    const selectedCount = selectedCardIds(cards, ui.selected).length;
     const controls = [];
     const runFromMenu = (type, payload = {}, options = {}) => {
       ui.sheet = null;
       void execute(type, payload, options);
     };
     if (!mine) {
-      controls.push(copy(`${nameForSeat(view, hand.activeSeatId)} is taking their turn. You can still sort your private hand.`));
+      controls.push(copy(
+        `No turn action is available on this device. ${nameForSeat(view, hand.activeSeatId)} is taking their turn. `
+        + "You can keep Actions open while you review the table or sort your private hand."
+      ));
     } else if (copyForPhase.step === "draw") {
       controls.push(
         commandButton("Draw from stock", () => runFromMenu("DRAW_STOCK"), { variant: "primary", disabled: gameplayIsBlocked() || hand.stockCount < 1, name: "draw-stock" }),
@@ -695,15 +699,15 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           if (!chosen) return;
           ui.composer = { type: "RUN", order: chosen, representations: {} };
           openActionSubsheet("compose");
-        }, { variant: "primary", disabled: gameplayIsBlocked(), name: "open-meld" }),
+        }, { variant: "primary", disabled: gameplayIsBlocked() || selectedCount < 1, name: "open-meld" }),
         commandButton("Add to table", () => {
           if (!selectedOrAnnounce(cards)) return;
           openActionSubsheet("layoff");
-        }, { disabled: gameplayIsBlocked() || !hand.melds.length, name: "add-to-table" }),
+        }, { disabled: gameplayIsBlocked() || selectedCount < 1 || !hand.melds.length, name: "add-to-table" }),
         commandButton("Replace a wild", () => {
           if (!selectedOrAnnounce(cards, "Select the natural replacement card first.")) return;
           openActionSubsheet("replace");
-        }, { disabled: gameplayIsBlocked(), name: "replace-wild" }),
+        }, { disabled: gameplayIsBlocked() || selectedCount < 1, name: "replace-wild" }),
         commandButton("Finish table play", () => runFromMenu("FINISH_TABLE_PLAY"), { disabled: gameplayIsBlocked(), name: "finish-table-play" })
       );
     } else if (copyForPhase.step === "discard") {
@@ -720,25 +724,38 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           if (!selectedOrAnnounce(cards, "Select exactly one card to discard.")) return;
           openActionSubsheet("discard");
         },
-        { variant: "danger", disabled: gameplayIsBlocked(), name: "discard" }
+        { variant: "danger", disabled: gameplayIsBlocked() || selectedCount !== 1, name: "discard" }
       ));
     } else if (copyForPhase.step === "complete") {
       controls.push(commandButton("Acknowledge hand result", () => runFromMenu("ACKNOWLEDGE_HAND_RESULT"), { variant: "primary", disabled: gameplayIsBlocked(), name: "acknowledge-hand" }));
     }
-    return gameSheet("Actions", copyForPhase.detail, [
+    return element("section", {
+      id: "game-action-menu",
+      className: "game-action-menu",
+      role: "region",
+      "aria-label": "Actions",
+      dataset: { gameActionMenu: "true", gameSheet: "actions" }
+    },
+    heading("Actions", 2),
+    copy(copyForPhase.detail),
       stack(...controls),
-      copy(`Selected: ${ui.selected.size}. Turn: draw → play → discard.`),
+      copy(`Selected: ${selectedCount}. Turn: draw → play → discard.`),
       commandButton("Close actions", closeSheet, { variant: "quiet", name: "close-actions" })
-    ]);
+    );
   }
 
   function actionLaunch() {
-    const trigger = commandButton("Actions", () => openSheet("actions"), {
+    const expanded = ui.sheet === "actions";
+    const trigger = commandButton(expanded ? "Hide actions" : "Actions", () => {
+      if (expanded) closeSheet();
+      else openSheet("actions");
+    }, {
       variant: "primary",
       disabled: gameplayIsBlocked(),
       name: "open-actions"
     });
-    trigger.setAttribute("aria-haspopup", "dialog");
+    trigger.setAttribute("aria-expanded", String(expanded));
+    trigger.setAttribute("aria-controls", "game-action-menu");
     return element("section", { className: "game-action-launch", "aria-label": "Game actions" }, trigger);
   }
 

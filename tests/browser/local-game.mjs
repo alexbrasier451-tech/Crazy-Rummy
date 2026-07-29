@@ -35,8 +35,9 @@ async function showGameDetails(page) {
 }
 
 async function openActions(page) {
+  if (await page.locator('[data-game-action-menu="true"]').count()) return;
   await control(page, "open-actions").click();
-  await page.locator('[data-game-sheet="actions"]').waitFor();
+  await page.locator('[data-game-action-menu="true"]').waitFor();
 }
 
 async function takeAction(page, name) {
@@ -209,13 +210,28 @@ try {
   assert.equal(await control(page, "developer-seat").count(), 0,
     "nonessential game context should be collapsed initially");
   await openActions(page);
-  await page.getByRole("dialog", { name: "Actions" }).waitFor();
+  const actionMenu = page.getByRole("region", { name: "Actions", exact: true });
+  await actionMenu.waitFor();
+  assert.equal(await actionMenu.getAttribute("aria-modal"), null,
+    "Actions must be a non-modal disclosure so the table and hand remain interactive");
+  await actionMenu.getByText(/No turn action is available on this device/).waitFor();
   await control(page, "close-actions").click();
   await control(page, "open-actions").focus();
   assert.equal(await page.evaluate(() => document.activeElement?.dataset.gameControl), "open-actions",
     "closing the action sheet should restore focus to its trigger");
 
   await selectActiveSeat(page);
+  await openActions(page);
+  const liveOpeningCard = await firstPrivateCard(page);
+  await liveOpeningCard.tap();
+  assert.equal(await liveOpeningCard.getAttribute("aria-pressed"), "true",
+    "the active player must be able to select a card while Actions remains open");
+  assert.equal(await page.locator('[data-game-action-menu="true"]').count(), 1,
+    "card selection must keep the non-modal Actions tray open");
+  assert.equal(await control(page, "discard").isEnabled(), true,
+    "selecting one opening card must reveal an enabled discard action");
+  await control(page, "close-actions").click();
+  await clearSelection(page);
   const openingCard = await firstPrivateCard(page);
   await openingCard.focus();
   await page.keyboard.press("Space");
