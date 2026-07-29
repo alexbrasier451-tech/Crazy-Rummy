@@ -40,6 +40,13 @@
         text-transform: uppercase;
       }
       h1 { margin: 0; }
+      .test-code {
+        margin: 0.65rem 0 0;
+        color: #e2b542;
+        font-size: 1.4rem;
+        font-weight: 900;
+        letter-spacing: 0.16em;
+      }
       #status, pre {
         margin: 1rem 0 0;
         padding: 1rem;
@@ -60,6 +67,7 @@
     <main>
       <p class="eyebrow">Phase 0 - Metered WebRTC</p>
       <h1>Crazy Rummy connection test</h1>
+      <p class="test-code">Code: <span id="test-code">------</span></p>
       <p id="status" data-status="starting" role="status" aria-live="polite">Starting...</p>
       <pre id="report" aria-label="Redacted connection report">No report yet.</pre>
     </main>
