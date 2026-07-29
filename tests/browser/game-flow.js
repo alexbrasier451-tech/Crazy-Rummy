@@ -64,5 +64,16 @@ globalThis.gameFlowHarness = Object.freeze({
     snapshot.view.revision += 1;
     snapshot.view.hand.activeSeatId = "b";
     for (const listener of listeners) listener();
+  },
+  passDrawTurnToAster() {
+    snapshot = structuredClone(snapshot);
+    snapshot.view.revision += 1;
+    snapshot.view.hand.activeSeatId = "a";
+    snapshot.view.hand.phase = "AWAITING_DRAW";
+    snapshot.view.hand.turnNumber = (snapshot.view.hand.turnNumber ?? 1) + 1;
+    for (const listener of listeners) listener();
+  },
+  notify() {
+    for (const listener of listeners) listener();
   }
 });

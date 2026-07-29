@@ -52,6 +52,20 @@ try {
   assert.equal(await page.locator('[data-game-sheet="add-to-table"]').count(), 0,
     "a stale selection must not open layoff after the local TABLE_PLAY turn ends");
   assert.match(await page.locator("[data-game-workspace]").innerText(), /only the active player can add to the shared table/i);
+
+  await page.evaluate(() => globalThis.gameFlowHarness.passDrawTurnToAster());
+  const automaticDrawMenu = page.locator('[data-game-action-menu="true"]');
+  await automaticDrawMenu.waitFor();
+  await page.locator('[data-game-control="draw-stock"]').waitFor();
+  await page.locator('[data-game-control="draw-discard"]').waitFor();
+  assert.equal(await page.locator('[data-game-control="open-actions"]').getAttribute("aria-expanded"), "true",
+    "a newly active local draw turn should open its draw choices without an Actions-button press");
+
+  await page.locator('[data-game-control="close-actions"]').click();
+  await page.evaluate(() => globalThis.gameFlowHarness.notify());
+  await page.waitForTimeout(25);
+  assert.equal(await automaticDrawMenu.count(), 0,
+    "closing the automatic draw menu should keep it closed for the rest of that turn");
 } finally {
   await browser.close();
   await server.close();

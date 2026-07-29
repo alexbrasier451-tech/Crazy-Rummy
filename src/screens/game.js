@@ -274,7 +274,8 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     previousNetworkMode: null,
     networkAnnouncements: new Set(),
     showDetails: false,
-    handToolsMinimized: false
+    handToolsMinimized: false,
+    promptedDrawTurns: new Set()
   };
 
   const workspace = element("div", {
@@ -530,6 +531,22 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     ui.sheetReturnFocus = document.activeElement;
     ui.sheet = kind;
     render();
+  }
+
+  function promptDrawActionsForTurn(hand, localSeatId, revision) {
+    if (
+      hand?.phase !== "AWAITING_DRAW"
+      || hand.activeSeatId !== localSeatId
+      || gameplayIsBlocked()
+    ) return;
+    const turnKey = [
+      hand.id ?? `hand-${hand.index ?? "unknown"}`,
+      hand.turnNumber ?? `revision-${revision ?? "unknown"}`,
+      hand.activeSeatId
+    ].join("|");
+    if (ui.promptedDrawTurns.has(turnKey)) return;
+    ui.promptedDrawTurns.add(turnKey);
+    ui.sheet = "actions";
   }
 
   function openActionSubsheet(kind) {
@@ -1148,6 +1165,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     }
     const cards = sortCardIds(ownCards, ui.sort);
     const revision = view.revision ?? snapshot.state?.revision;
+    promptDrawActionsForTurn(hand, localSeatId, revision);
     workspace.className = `game-workspace${isOnline ? " game-workspace--online" : ""}`;
     workspace.dataset.revision = String(revision ?? "");
     workspace.dataset.phase = hand.phase;

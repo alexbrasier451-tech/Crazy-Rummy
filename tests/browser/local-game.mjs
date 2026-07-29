@@ -312,6 +312,17 @@ try {
   await refreshPreservesAcceptedState(page, "AWAITING_DRAW", "awaiting draw");
 
   await selectActiveSeat(page);
+  const automaticDrawMenu = page.locator('[data-game-action-menu="true"]');
+  await automaticDrawMenu.waitFor();
+  await control(page, "draw-stock").waitFor();
+  await control(page, "draw-discard").waitFor();
+  assert.equal(await control(page, "open-actions").getAttribute("aria-expanded"), "true",
+    "switching to the active player's draw turn should reveal draw choices automatically");
+  await control(page, "close-actions").click();
+  await control(page, "toggle-hand-tools").click();
+  assert.equal(await automaticDrawMenu.count(), 0,
+    "an unrelated same-turn render must not reopen a dismissed automatic draw menu");
+  await control(page, "toggle-hand-tools").click();
   await expectOneAcceptedRevision(page, () => takeAction(page, "draw-stock"), "first stock draw");
   assert.equal(await phase(page), "TABLE_PLAY");
   await refreshPreservesAcceptedState(page, "TABLE_PLAY", "table play");
