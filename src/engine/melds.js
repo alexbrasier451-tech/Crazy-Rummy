@@ -46,6 +46,14 @@ function freezeMeld(meld) {
   return Object.freeze({ ...meld, slots: Object.freeze(slots) });
 }
 
+function permutations(values) {
+  if (values.length < 2) return [values];
+  return values.flatMap((value, index) => (
+    permutations(values.filter((_, candidateIndex) => candidateIndex !== index))
+      .map((tail) => [value, ...tail])
+  ));
+}
+
 function hasExactRepresentation(represented, expected) {
   if (!isRecord(represented) || represented.rank !== expected.rank) return false;
   return expected.suit == null
@@ -266,6 +274,95 @@ export function inferMeldType(meld, { wildRank } = {}) {
     || result.detail === "RUN_SUIT_REQUIRED"
   ));
   return rejected(needsWildMeaning ? "MELD_DETAILS_REQUIRED" : "MELD_TYPE_NOT_INFERRED");
+}
+
+/**
+ * Derives every legal complete interpretation available from a group of
+ * selected cards. Natural cards determine a set rank or run suit; the caller
+ * never needs to offer ranks or suits that authoritative validation rejects.
+ */
+export function legalMeldInterpretations(meld, { wildRank } = {}) {
+  if (!isRecord(meld) || !Array.isArray(meld.slots) || !RANK_INDEX.has(wildRank)) {
+    return Object.freeze([]);
+  }
+
+  const slots = meld.slots.map((slot) => ({
+    slotId: slot?.slotId,
+    cardId: slot?.cardId
+  }));
+  const parsed = slots.map((slot) => ({ slot, card: parseCardId(slot.cardId) }));
+  if (parsed.some(({ card }) => !card)) return Object.freeze([]);
+
+  const wilds = parsed.filter(({ card }) => card.rank === wildRank);
+  const naturals = parsed.filter(({ card }) => card.rank !== wildRank);
+  const interpretations = [];
+  const seen = new Set();
+  const accept = (result) => {
+    if (!result.ok) return;
+    const identity = result.meld.slots
+      .filter(({ cardId }) => parseCardId(cardId)?.rank === wildRank)
+      .map(({ cardId, represented }) => `${cardId}:${represented.rank}:${represented.suit ?? ""}`)
+      .sort()
+      .join("|");
+    const key = `${result.meld.type}:${identity}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    interpretations.push(Object.freeze({
+      type: result.meld.type,
+      meld: result.meld
+    }));
+  };
+
+  if (naturals.length) {
+    const setRank = naturals[0].card.rank;
+    if (naturals.every(({ card }) => card.rank === setRank)) {
+      accept(validateMeld({
+        ...meld,
+        type: MELD_TYPE.SET,
+        rank: setRank,
+        slots: slots.map((slot) => (
+          parseCardId(slot.cardId).rank === wildRank
+            ? { ...slot, represented: { rank: setRank } }
+            : slot
+        ))
+      }, { wildRank }));
+    }
+
+    const runSuit = naturals[0].card.suit;
+    if (naturals.every(({ card }) => card.suit === runSuit)) {
+      const naturalRanks = new Set(naturals.map(({ card }) => card.rank));
+      for (let start = 0; start <= RANKS.length - slots.length; start += 1) {
+        const window = RANKS.slice(start, start + slots.length);
+        if (!naturals.every(({ card }) => window.includes(card.rank))) continue;
+        const missingRanks = window.filter((rank) => !naturalRanks.has(rank));
+        if (missingRanks.length !== wilds.length) continue;
+
+        for (const assignedRanks of permutations(missingRanks)) {
+          const wildRanksByCard = new Map(
+            wilds.map(({ slot }, index) => [slot.cardId, assignedRanks[index]])
+          );
+          accept(validateMeld({
+            ...meld,
+            type: MELD_TYPE.RUN,
+            suit: runSuit,
+            slots: slots.map((slot) => (
+              wildRanksByCard.has(slot.cardId)
+                ? {
+                    ...slot,
+                    represented: {
+                      rank: wildRanksByCard.get(slot.cardId),
+                      suit: runSuit
+                    }
+                  }
+                : slot
+            ))
+          }, { wildRank }));
+        }
+      }
+    }
+  }
+
+  return Object.freeze(interpretations);
 }
 
 function normalisePlacement(placement) {

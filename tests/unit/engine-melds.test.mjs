@@ -4,6 +4,7 @@ import test from "node:test";
 import { MELD_TYPE, REJECTION } from "../../src/engine/constants.js";
 import {
   inferMeldType,
+  legalMeldInterpretations,
   validateLayoff,
   validateMeld,
   validateWildReplacement
@@ -117,6 +118,66 @@ test("meld inference waits for required wild meaning and rejects non-meld select
   ]), { wildRank: "4" });
   assert.equal(invalid.ok, false);
   assert.equal(invalid.detail, "MELD_TYPE_NOT_INFERRED");
+});
+
+test("meld composition derives only legal wild meanings from the selected cards", () => {
+  const setInterpretations = legalMeldInterpretations(meld(undefined, [
+    slot("diamonds", "diamonds:10"),
+    slot("clubs", "clubs:10"),
+    slot("wild", "clubs:A")
+  ]), { wildRank: "A" });
+  assert.equal(setInterpretations.length, 1);
+  assert.equal(setInterpretations[0].type, MELD_TYPE.SET);
+  assert.deepEqual(
+    setInterpretations[0].meld.slots.find(({ cardId }) => cardId === "clubs:A").represented,
+    { rank: "10" }
+  );
+
+  const runInterpretations = legalMeldInterpretations(meld(undefined, [
+    slot("ten", "diamonds:10"),
+    slot("jack", "diamonds:J"),
+    slot("wild", "clubs:A")
+  ]), { wildRank: "A" });
+  assert.deepEqual(
+    runInterpretations.map(({ meld: candidate }) => (
+      candidate.slots.find(({ cardId }) => cardId === "clubs:A").represented
+    )),
+    [
+      { rank: "9", suit: "diamonds" },
+      { rank: "Q", suit: "diamonds" }
+    ]
+  );
+
+  const gapInterpretations = legalMeldInterpretations(meld(undefined, [
+    slot("ten", "hearts:10"),
+    slot("queen", "hearts:Q"),
+    slot("wild", "spades:A")
+  ]), { wildRank: "A" });
+  assert.deepEqual(
+    gapInterpretations.map(({ meld: candidate }) => (
+      candidate.slots.find(({ cardId }) => cardId === "spades:A").represented
+    )),
+    [{ rank: "J", suit: "hearts" }]
+  );
+
+  const aceLowInterpretations = legalMeldInterpretations(meld(undefined, [
+    slot("ace", "clubs:A"),
+    slot("two", "clubs:2"),
+    slot("wild", "diamonds:4")
+  ]), { wildRank: "4" });
+  assert.deepEqual(
+    aceLowInterpretations.map(({ meld: candidate }) => (
+      candidate.slots.find(({ cardId }) => cardId === "diamonds:4").represented
+    )),
+    [{ rank: "3", suit: "clubs" }],
+    "Ace must stay low instead of creating a Q-K-A wraparound option"
+  );
+
+  assert.deepEqual(legalMeldInterpretations(meld(undefined, [
+    slot("ten", "clubs:10"),
+    slot("jack", "hearts:J"),
+    slot("wild", "diamonds:4")
+  ]), { wildRank: "4" }), []);
 });
 
 test("allows only set growth or contiguous run end extensions", () => {

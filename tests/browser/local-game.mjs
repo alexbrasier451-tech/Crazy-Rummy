@@ -306,15 +306,35 @@ try {
   await control(page, "cancel-meld").click();
   await clearSelection(page);
 
-  await chooseCards(page, ["diamonds:10", "clubs:10", "clubs:A"]);
+  await chooseCards(page, ["diamonds:10", "diamonds:J", "clubs:A"]);
   await takeAction(page, "open-meld");
   assert.equal(await page.getByRole("radio", { name: "Set" }).count(), 0,
     "the composer must not ask the player to choose a meld type");
-  const wildRankChoice = page.getByLabel("Wild represents rank for Ace of clubs");
-  await wildRankChoice.selectOption("10");
-  assert.equal(await wildRankChoice.inputValue(), "10",
-    "a detected meld must keep the visible wild representation in sync after rerender");
+  await page.getByText("Run detected").waitFor();
+  const wildRankChoice = page.getByLabel("Wild completes run as rank for Ace of clubs");
+  assert.deepEqual(
+    await wildRankChoice.locator("option").evaluateAll((options) => (
+      options.map(({ value }) => value).filter(Boolean)
+    )),
+    ["9", "Q"],
+    "a run wild must offer only the two ranks that legally complete the selected run"
+  );
+  assert.equal(await page.getByLabel("Wild completes run as suit for Ace of clubs").count(), 0,
+    "the natural run cards must determine the wild suit");
+  await wildRankChoice.selectOption("Q");
+  assert.equal(await wildRankChoice.inputValue(), "Q",
+    "a legal run choice must remain visible after rerender");
+  assert.equal(await control(page, "place-meld").isEnabled(), true);
+  await control(page, "cancel-meld").click();
+  await clearSelection(page);
+
+  await chooseCards(page, ["diamonds:10", "clubs:10", "clubs:A"]);
+  await takeAction(page, "open-meld");
   await page.getByText("Set detected").waitFor();
+  assert.equal(await page.getByLabel(/Wild .* rank for Ace of clubs/).count(), 0,
+    "a set must infer the wild rank from its natural cards without asking the player");
+  assert.equal(await control(page, "place-meld").isEnabled(), true,
+    "an inferred set must be ready to place immediately");
   await expectOneAcceptedRevision(page, () => control(page, "place-meld").click(), "opening set");
   assert.match(await page.getByLabel("Shared table melds").innerText(), /set/i);
   assert.equal(await page.locator("button article").count(), 0,
