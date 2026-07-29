@@ -26,6 +26,7 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
     const localSeat = seats.find((seat) => (seat.playerId ?? seat.id) === localPlayerId);
     const isHost = Boolean(room.isHost ?? localSeat?.isHost ?? (room.hostPlayerId && room.hostPlayerId === localPlayerId));
     const ready = Boolean(localSeat?.ready);
+    const busy = Boolean(pending) || enteringStartedMatch;
     const capacity = table.capacity || 6;
     const occupied = seats.length;
     const inviteCode = table.code ?? snapshot.room?.invite?.code ?? null;
@@ -57,20 +58,24 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
       panel("Seats", element("div", { className: "seat-grid" }, seatNodes)),
       message ? element("p", { className: "online-message", role: "status", text: message }) : null,
       stack(
-        actionButton({ label: ready ? "I’m not ready" : "I’m ready", pending: pending === "ready", disabled: !snapshot.online, onActivate: () => run("ready", "setReady", { ready: !ready }) }),
+        actionButton({ label: ready ? "I’m not ready" : "I’m ready", pending: pending === "ready", disabled: !snapshot.online || busy, onActivate: () => run("ready", "setReady", { ready: !ready }) }),
         isHost && room.status !== "STARTED" ? [
-          actionButton({ label: "Start match", variant: "primary", pending: pending === "start", disabled: !snapshot.online || !canStart || room.status === "STARTED", onActivate: () => run("start", "startMatch") }),
-          actionButton({ label: "Cancel table", variant: "danger", pending: pending === "cancel", disabled: !snapshot.online || room.status !== "OPEN", onActivate: () => run("cancel", "cancelTable") })
+          actionButton({ label: "Start match", variant: "primary", pending: pending === "start", disabled: !snapshot.online || busy || !canStart || room.status === "STARTED", onActivate: () => run("start", "startMatch") }),
+          actionButton({ label: "Cancel table", variant: "danger", pending: pending === "cancel", disabled: !snapshot.online || busy || room.status !== "OPEN", onActivate: () => run("cancel", "cancelTable") })
         ] : room.status === "STARTED"
-          ? actionButton({ label: "Join started match", variant: "primary", pending: enteringStartedMatch, onActivate: () => enterStartedMatch() })
+          ? actionButton({ label: "Join started match", variant: "primary", pending: enteringStartedMatch, disabled: busy, onActivate: () => enterStartedMatch() })
           : copy(occupied < 2 ? "Waiting for at least 2 players." : "Waiting for the host to start when every seat is ready."),
-        actionButton({ label: "Leave waiting room", variant: "danger", pending: pending === "leave", disabled: !snapshot.online, onActivate: () => run("leave", "leave") }),
-        actionButton({ label: "Refresh room", variant: "quiet", disabled: !snapshot.online, pending: pending === "refresh", onActivate: () => run("refresh", "refresh") })
+        actionButton({ label: "Leave waiting room", variant: "danger", pending: pending === "leave", disabled: !snapshot.online || busy, onActivate: () => run("leave", "leave") }),
+        actionButton({ label: "Refresh room", variant: "quiet", disabled: !snapshot.online || busy, pending: pending === "refresh", onActivate: () => run("refresh", "refresh") })
       )
     );
   };
   const run = async (name, method, args) => {
-    if (pending) return;
+    if (pending || enteringStartedMatch) {
+      message = "The waiting room is still finishing the previous request. Please wait.";
+      render();
+      return;
+    }
     pending = name; message = null; render();
     try {
       await onlineSession[method]?.(args);

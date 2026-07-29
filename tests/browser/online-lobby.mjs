@@ -71,6 +71,13 @@ try {
   await page.evaluate(() => globalThis.onlineHarness.prepareTwoPlayerStart());
   await page.getByText("2 of 2 players").waitFor();
   assert.equal(await page.getByRole("button", { name: "Start match" }).isEnabled(), true);
+  await page.evaluate(() => globalThis.onlineHarness.mountWaitingRoomDuringRefresh());
+  await page.getByRole("button", { name: "Refresh room" }).click();
+  assert.equal(await page.getByRole("button", { name: "I’m not ready" }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "Start match" }).isDisabled(), true);
+  await page.evaluate(() => globalThis.onlineHarness.finishRoomRefresh());
+  await page.waitForFunction(() => ![...document.querySelectorAll("button")]
+    .find((button) => button.textContent.includes("Start match"))?.disabled);
   await page.getByRole("button", { name: "Start match" }).click();
   await page.getByRole("button", { name: "Join started match" }).waitFor();
   assert.equal(await page.getByRole("button", { name: "Join started match" }).isEnabled(), true);

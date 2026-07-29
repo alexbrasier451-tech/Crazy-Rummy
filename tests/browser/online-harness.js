@@ -125,6 +125,7 @@ renderLobby(players[1]);
 
 let pendingRefreshResolve = null;
 let pendingLobbySession = null;
+let pendingRoomRefreshResolve = null;
 const pendingLobbyPlayer = { playerId: "pending_001", displayName: "Pending Pat" };
 
 function mountLobbyDuringInitialRefresh() {
@@ -159,11 +160,42 @@ async function finishInitialRefresh() {
   return pendingLobbySession?.getSnapshot?.();
 }
 
+function mountWaitingRoomDuringRefresh() {
+  const player = players[0];
+  const base = sessionFor(player);
+  const delayed = {
+    ...base,
+    refresh() {
+      return new Promise((resolve, reject) => {
+        pendingRoomRefreshResolve = () => base.refresh().then(resolve, reject);
+      });
+    }
+  };
+  mount(waitingRoomScreen({
+    navigate: navigateFor(player),
+    router,
+    onlineSession: delayed,
+    localSession: localSessionFor(player),
+    async startOnlineMatch() {
+      matchStartAttempts += 1;
+      throw new Error("Injected match connection failure.");
+    }
+  }));
+}
+
+async function finishRoomRefresh() {
+  pendingRoomRefreshResolve?.();
+  await new Promise((resolve) => queueMicrotask(resolve));
+  await new Promise((resolve) => queueMicrotask(resolve));
+}
+
 globalThis.onlineHarness = Object.freeze({
   fillOpenRoom,
   startClosedJourney,
   prepareTwoPlayerStart,
   mountLobbyDuringInitialRefresh,
   finishInitialRefresh,
+  mountWaitingRoomDuringRefresh,
+  finishRoomRefresh,
   matchStartAttempts: () => matchStartAttempts
 });
