@@ -1,0 +1,59 @@
+import assert from "node:assert/strict";
+import path from "node:path";
+import { chromium } from "playwright";
+
+import { startTestServer } from "./test-server.mjs";
+
+const root = path.resolve(import.meta.dirname, "../..");
+const testServer = await startTestServer({ root });
+const browser = await chromium.launch({ headless: true });
+
+try {
+  const context = await browser.newContext({
+    viewport: { width: 320, height: 844 },
+    serviceWorkers: "block"
+  });
+  const page = await context.newPage();
+  await page.goto(`${testServer.origin}/tests/browser/online-harness.html`, {
+    waitUntil: "domcontentloaded"
+  });
+
+  await page.getByRole("heading", { name: "Open tables" }).waitFor();
+  await page.getByRole("button", { name: "Preview table" }).click();
+  await page.getByRole("button", { name: "Join table" }).click();
+  await page.getByRole("heading", { level: 1, name: "Waiting room" }).waitFor();
+  await page.getByRole("button", { name: "I’m ready" }).click();
+  await page.getByLabel(/Alex, current turn, Ready/).waitFor();
+
+  await page.evaluate(() => globalThis.onlineHarness.fillOpenRoom());
+  await page.getByText("6 of 6 players").waitFor();
+  assert.equal(await page.locator(".seat-grid .player-chip").count(), 6);
+  await page.getByRole("button", { name: "I’m ready" }).click();
+  await page.getByLabel(/Pat, current turn, Ready/).waitFor();
+  await page.getByRole("button", { name: "Cancel table" }).click();
+  await page.waitForFunction(() => document.body.dataset.lastNavigation === "/lobby");
+
+  const closedCode = await page.evaluate(() => globalThis.onlineHarness.startClosedJourney());
+  await page.getByText(/No open tables found right now/).waitFor();
+  await page.getByRole("button", { name: "Join with a code" }).click();
+  await page.getByLabel("Enter a table code").fill(closedCode);
+  await page.getByRole("button", { name: "Find and join table" }).click();
+  await page.getByText(/Closed table/).waitFor({ timeout: 5_000 }).catch(async (error) => {
+    throw new Error(`${error.message}\nRendered body:\n${await page.locator("body").innerText()}`);
+  });
+  assert.equal(
+    await page.getByText(/Code /).textContent().then((text) => text.includes(closedCode)),
+    true
+  );
+
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth > document.documentElement.clientWidth
+  );
+  assert.equal(overflow, false, "Stage 4 lobby and waiting room must not overflow at 320px");
+  await context.close();
+} finally {
+  await browser.close();
+  await testServer.close();
+}
+
+console.log("Stage 4 Open/Closed six-seat lobby browser acceptance passed.");

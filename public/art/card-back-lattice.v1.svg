@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 280" role="img" aria-labelledby="title desc">
+  <title id="title">Crazy Rummy rail-lattice card back</title>
+  <desc id="desc">A geometric cream, green, and gold rail pattern on a dark field.</desc>
+  <defs>
+    <pattern id="ties" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="28" height="28" fill="#151817"/>
+      <path d="M0 7h28M0 21h28" stroke="#0d7a52" stroke-width="6"/>
+      <path d="M5 0v28M23 0v28" stroke="#424a43" stroke-width="2"/>
+      <path d="M0 14h28" stroke="#e2b542" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="shade">
+      <stop offset="50%" stop-color="#151817" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#0b0d0e" stop-opacity=".8"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="280" rx="18" fill="url(#ties)"/>
+  <rect width="200" height="280" rx="18" fill="url(#shade)"/>
+  <path d="M37 140h32m62 0h32M75 110l25-25 25 25v60l-25 25-25-25z" fill="#151817" stroke="#f7f2e9" stroke-width="5"/>
+  <path d="M87 116h26v48H87zM81 128h38M81 152h38" fill="none" stroke="#e2b542" stroke-width="4"/>
+  <circle cx="100" cy="140" r="5" fill="#38c286"/>
+</svg>

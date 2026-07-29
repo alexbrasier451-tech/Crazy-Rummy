@@ -1,0 +1,34 @@
+{
+  "name": "crazy-rummy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node --test --test-isolation=none \"tests/unit/*.test.mjs\"",
+    "test:unit": "node --test --test-isolation=none \"tests/unit/*.test.mjs\"",
+    "test:smoke": "node tests/browser/smoke.mjs",
+    "test:online-lobby": "node tests/browser/online-lobby.mjs",
+    "test:online-transport": "node tests/browser/online-transport.mjs",
+    "test:online-game": "node tests/browser/online-game.mjs",
+    "test:pwa": "node tests/browser/pwa.mjs",
+    "test:github-pages": "node tests/browser/github-pages.mjs",
+    "test:local-game": "node tests/browser/local-game.mjs",
+    "test:stage7-results": "node tests/browser/stage7-results.mjs",
+    "test:stage7": "pnpm test:smoke && pnpm test:stage7-results && pnpm test:local-game",
+    "check": "pnpm test:unit && pnpm build && pnpm test:online-lobby && pnpm test:online-transport && pnpm test:online-game && pnpm test:pwa && pnpm test:github-pages && pnpm test:stage7"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.0",
+    "vite": "^8.1.5"
+  },
+  "dependencies": {
+    "@metered-ca/realtime": "^1.2.0"
+  }
+}

@@ -1,9 +1,10 @@
-name: Deploy network probe to GitHub Pages
+name: Deploy online beta to GitHub Pages
 
 on:
   push:
     branches:
       - main
+      - codex/stage-8-online-beta
   workflow_dispatch:
 
 permissions:
@@ -16,20 +17,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build:
+    if: >-
+      vars.CRAZY_RUMMY_ONLINE_ENABLED == 'true'
+      && startsWith(vars.METERED_BETA_PUBLISHABLE_KEY, 'pk_live_')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Build scoped online beta
+        run: pnpm build
+        env:
+          CRAZY_RUMMY_BASE_PATH: /Crazy-Rummy/
+          CRAZY_RUMMY_PWA_REVISION: ${{ github.sha }}
+          VITE_CRAZY_RUMMY_ONLINE_ENABLED: "true"
+          VITE_METERED_PUBLISHABLE_KEY: ${{ vars.METERED_BETA_PUBLISHABLE_KEY }}
+      - name: Verify deploy artifact
+        run: >-
+          node tests/release/verify-github-pages-build.mjs
+          dist /Crazy-Rummy/
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./dist
+
   deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload static site
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: .
-      - name: Deploy
+      - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0b0d0e">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; object-src 'none'"
+    >
+    <title>Crazy Rummy Phone Network Test</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0b0d0e;
+        color: #f7f2e9;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+      }
+      main {
+        width: min(100%, 44rem);
+        margin: 1.5rem auto;
+      }
+      .eyebrow {
+        color: #e2b542;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      h1 { margin: 0.3rem 0; font-size: clamp(2rem, 8vw, 3.4rem); }
+      .intro { color: #c9c1b4; line-height: 1.55; }
+      section {
+        margin-top: 1rem;
+        padding: 1rem;
+        border: 1px solid #3d453e;
+        border-radius: 1rem;
+        background: #151817;
+      }
+      h2 { margin-top: 0; font-size: 1.2rem; }
+      ol { padding-left: 1.35rem; color: #d9d2c5; line-height: 1.55; }
+      label { display: block; margin-top: 0.75rem; font-weight: 800; }
+      input {
+        width: 100%;
+        margin-top: 0.5rem;
+        padding: 0.85rem 1rem;
+        border: 2px solid #536259;
+        border-radius: 0.75rem;
+        background: #0b0d0e;
+        color: #f7f2e9;
+        font: 800 1.5rem/1 system-ui, sans-serif;
+        letter-spacing: 0.2em;
+        text-align: center;
+        text-transform: uppercase;
+      }
+      a, button {
+        display: block;
+        width: 100%;
+        margin-top: 0.65rem;
+        padding: 0.85rem 1rem;
+        border: 0;
+        border-radius: 0.75rem;
+        background: #287d55;
+        color: white;
+        font: inherit;
+        font-weight: 800;
+        text-align: center;
+        text-decoration: none;
+      }
+      a.secondary { background: #4a4030; }
+      button { background: #5a4930; cursor: pointer; }
+      .note { color: #bdb5a6; font-size: 0.9rem; }
+      #copy-status { min-height: 1.4em; color: #e2b542; }
+      .active-code {
+        margin: 0.5rem 0;
+        color: #e2b542;
+        font-size: 2rem;
+        font-weight: 900;
+        letter-spacing: 0.18em;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Phase 0 - live phone check</p>
+      <h1>Crazy Rummy network test</h1>
+      <p class="intro">
+        Use this PC on home broadband and one phone with Wi-Fi switched off.
+        Nothing is installed and no card information is involved.
+      </p>
+
+      <section>
+        <h2>Pair the two devices</h2>
+        <p class="note">
+          Both devices must show the same six-character code. On the phone,
+          open this launcher, enter the code shown on the PC, and press Use
+          this code.
+        </p>
+        <p id="active-code" class="active-code" aria-live="polite"></p>
+        <label for="test-code">Test code</label>
+        <input
+          id="test-code"
+          name="test-code"
+          maxlength="6"
+          autocapitalize="characters"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <button id="apply-code" type="button">Use this code</button>
+      </section>
+
+      <section>
+        <h2>1. Automatic-path test</h2>
+        <ol>
+          <li>Confirm the phone shows the same code as this PC.</li>
+          <li>On the phone, tap Open phone side on this device.</li>
+          <li>On the PC, tap Open desktop side.</li>
+          <li>Both screens should report Passed and name the selected path.</li>
+        </ol>
+        <a id="direct-host" href="#">Open desktop automatic side</a>
+        <button data-copy-link="direct-guest">Copy phone link</button>
+        <a id="direct-guest" class="secondary" href="#">Open phone side on this device</a>
+      </section>
+
+      <section>
+        <h2>2. Forced-TURN test</h2>
+        <ol>
+          <li>Close the two direct-test pages.</li>
+          <li>Confirm both launchers still show the same code.</li>
+          <li>Open the phone relay side, then the desktop relay side.</li>
+          <li>Both reports must show relay for local and remote candidates.</li>
+        </ol>
+        <a id="relay-host" href="#">Open desktop relay side</a>
+        <button data-copy-link="relay-guest">Copy phone relay link</button>
+        <a id="relay-guest" class="secondary" href="#">Open phone relay side on this device</a>
+      </section>
+
+      <p id="copy-status" role="status" aria-live="polite"></p>
+      <p class="note">
+        The automatic test may select direct or relay; either is a valid game
+        connection. The forced-TURN test must select relay.
+      </p>
+      <p class="note">
+        The free allowance has hard caps. If it is exhausted, online relay
+        stops rather than creating a charge.
+      </p>
+    </main>
+    <script src="./launcher.js?v=4"></script>
+  </body>
+</html>

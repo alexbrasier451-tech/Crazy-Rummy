@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Crazy Rummy rail-card mark</title>
+  <rect width="512" height="512" rx="108" fill="#0b0d0e"/>
+  <path d="M104 128h304v256H104z" fill="#f3ead7" stroke="#d4a94e" stroke-width="16"/>
+  <path d="M136 160h240v192H136z" fill="#1c2a23" stroke="#0b0d0e" stroke-width="12"/>
+  <path d="M166 322 238 190m108 132-72-132" fill="none" stroke="#d4a94e" stroke-width="18" stroke-linecap="round"/>
+  <path d="M188 230h136m-158 48h180" fill="none" stroke="#f3ead7" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="166" cy="230" r="14" fill="#b7463f"/>
+  <circle cx="346" cy="278" r="14" fill="#2f8f5b"/>
+</svg>

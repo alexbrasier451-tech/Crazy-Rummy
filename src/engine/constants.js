@@ -1,0 +1,147 @@
+export const SCHEMA_VERSION = 2;
+export const RULES_VERSION = "crazy-rummy/1";
+export const SYSTEM_ACTOR_SEAT_ID = "system";
+
+export const SUITS = Object.freeze([
+  "clubs",
+  "diamonds",
+  "hearts",
+  "spades"
+]);
+
+export const RANKS = Object.freeze([
+  "A",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "J",
+  "Q",
+  "K"
+]);
+
+const HAND_LABELS = Object.freeze([
+  "Aces",
+  "Twos",
+  "Threes",
+  "Fours",
+  "Fives",
+  "Sixes",
+  "Sevens",
+  "Eights",
+  "Nines",
+  "Tens",
+  "Jacks",
+  "Queens",
+  "Kings"
+]);
+
+export const HAND_SCHEDULE = Object.freeze(
+  RANKS.map((wildRank, offset) => Object.freeze({
+    index: offset + 1,
+    wildRank,
+    label: HAND_LABELS[offset]
+  }))
+);
+
+export const LIFECYCLE = Object.freeze({
+  LOBBY: "LOBBY",
+  IN_PROGRESS: "IN_PROGRESS",
+  COMPLETE: "COMPLETE"
+});
+
+export const PHASE = Object.freeze({
+  DEALER_INITIAL_DISCARD: "DEALER_INITIAL_DISCARD",
+  AWAITING_DRAW: "AWAITING_DRAW",
+  TABLE_PLAY: "TABLE_PLAY",
+  AWAITING_DISCARD: "AWAITING_DISCARD",
+  HAND_COMPLETE: "HAND_COMPLETE"
+});
+
+export const MELD_TYPE = Object.freeze({
+  SET: "SET",
+  RUN: "RUN"
+});
+
+export const COMMAND_TYPE = Object.freeze({
+  JOIN_SEAT: "JOIN_SEAT",
+  LEAVE_SEAT: "LEAVE_SEAT",
+  SET_SEAT_READY: "SET_SEAT_READY",
+  START_GAME: "START_GAME",
+  DEALER_INITIAL_DISCARD: "DEALER_INITIAL_DISCARD",
+  DRAW_STOCK: "DRAW_STOCK",
+  DRAW_DISCARD: "DRAW_DISCARD",
+  CREATE_MELD: "CREATE_MELD",
+  LAY_OFF: "LAY_OFF",
+  REPLACE_WILD: "REPLACE_WILD",
+  FINISH_TABLE_PLAY: "FINISH_TABLE_PLAY",
+  DISCARD: "DISCARD",
+  ACKNOWLEDGE_HAND_RESULT: "ACKNOWLEDGE_HAND_RESULT",
+  DROP_SEAT: "DROP_SEAT"
+});
+
+export const EVENT_TYPE = Object.freeze({
+  SEAT_JOINED: "SEAT_JOINED",
+  SEAT_LEFT: "SEAT_LEFT",
+  SEAT_READY_CHANGED: "SEAT_READY_CHANGED",
+  GAME_STARTED: "GAME_STARTED",
+  DEALER_INITIAL_DISCARDED: "DEALER_INITIAL_DISCARDED",
+  CARD_DRAWN: "CARD_DRAWN",
+  MELD_CREATED: "MELD_CREATED",
+  CARDS_LAID_OFF: "CARDS_LAID_OFF",
+  WILD_REPLACED: "WILD_REPLACED",
+  TABLE_PLAY_FINISHED: "TABLE_PLAY_FINISHED",
+  CARD_DISCARDED: "CARD_DISCARDED",
+  HAND_RESULT_ACKNOWLEDGED: "HAND_RESULT_ACKNOWLEDGED",
+  SEAT_DROPPED: "SEAT_DROPPED"
+});
+
+export const REJECTION = Object.freeze({
+  INVALID_COMMAND: "INVALID_COMMAND",
+  INVALID_GAME: "INVALID_GAME",
+  INVALID_HAND: "INVALID_HAND",
+  INVALID_STATE: "INVALID_STATE",
+  WRONG_LIFECYCLE: "WRONG_LIFECYCLE",
+  WRONG_PHASE: "WRONG_PHASE",
+  NOT_AUTHORIZED: "NOT_AUTHORIZED",
+  NOT_ACTIVE_PLAYER: "NOT_ACTIVE_PLAYER",
+  STALE_REVISION: "STALE_REVISION",
+  COMMAND_ID_REQUIRED: "COMMAND_ID_REQUIRED",
+  COMMAND_ID_CONFLICT: "COMMAND_ID_CONFLICT",
+  CARD_UNAVAILABLE: "CARD_UNAVAILABLE",
+  STOCK_EMPTY: "STOCK_EMPTY",
+  DISCARD_EMPTY: "DISCARD_EMPTY",
+  INVALID_MELD: "INVALID_MELD",
+  OPENING_REQUIRED: "OPENING_REQUIRED",
+  PLAYER_NOT_OPENED: "PLAYER_NOT_OPENED",
+  FINAL_DISCARD_REQUIRED: "FINAL_DISCARD_REQUIRED",
+  MELD_NOT_FOUND: "MELD_NOT_FOUND",
+  WILD_NOT_REPLACEABLE: "WILD_NOT_REPLACEABLE",
+  SEAT_LIMIT: "SEAT_LIMIT",
+  SEAT_OCCUPIED: "SEAT_OCCUPIED",
+  PLAYER_ALREADY_SEATED: "PLAYER_ALREADY_SEATED",
+  NOT_ENOUGH_PLAYERS: "NOT_ENOUGH_PLAYERS",
+  PLAYERS_NOT_READY: "PLAYERS_NOT_READY",
+  ALREADY_ACKNOWLEDGED: "ALREADY_ACKNOWLEDGED",
+  REVISION_GAP: "REVISION_GAP",
+  UNSUPPORTED_SCHEMA: "UNSUPPORTED_SCHEMA"
+});
+
+export const DEFAULT_RULES = Object.freeze({
+  rulesVersion: RULES_VERSION,
+  minimumPlayers: 3,
+  maximumPlayers: 6,
+  cardsPerPlayer: 7,
+  handCount: 13,
+  clockwise: true,
+  aceLowRuns: true,
+  wildsAllowedInOpeningMeld: true,
+  reclaimedWildMayBeHeld: true,
+  stockExhaustionEndsAfterTurn: true,
+  jointLowestScoreWins: true
+});

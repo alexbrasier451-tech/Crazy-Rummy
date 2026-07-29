@@ -1,14 +1,97 @@
-# Crazy Rummy phone network test
+# Crazy Rummy
 
-This public GitHub Pages site is a disposable Phase 0 connectivity probe.
+Crazy Rummy is a phone-first online version of the thirteen-hand moving-wild
+rummy game also known in some families as Railway Rummy or Benny.
 
-- `index.html` creates paired desktop/phone links.
-- `probe.html` runs the direct or forced-TURN data-channel test.
-- `config.js` contains only the frontend-safe Metered publishable key.
-- No secret key, payment credential, game state, or personal data is stored.
+**Phase 0 is approved. Phases 1–7 implementation is complete.** The installable
+static client, design system, accessible card-game primitives, honest offline
+shell, deterministic thirteen-hand rules engine, and recoverable playable
+local integration harness are implemented. The provider-neutral online lobby,
+Metered realtime table-service bridge, transient host authority, Open/Closed
+table journeys, leases, polling, abuse bounds, pair-scoped WebRTC star
+transport, ordered command/event synchronisation, five-minute recovery policy,
+private match bootstrap, host-authoritative online game composition,
+network-truthful action UI, adversarial thirteen-hand convergence, complete
+hand/final results, cached versioned rules, applied device settings,
+privacy-safe latest-match summaries, accepted-state feedback, recovery
+countdowns, and Stage 7 responsive/accessibility polish are also implemented.
+The online service stays disabled unless deployment supplies an
+origin-restricted publishable key. Three-phone, separate-network,
+forced-relay, and representative Android/iPhone physical-device revalidation
+remain release gates.
 
-The site is not the Crazy Rummy game.
+The Phase 1 evidence is recorded in the
+[Phase 1 build report](docs/phase-1/PHASE_1_BUILD_REPORT.md). The real-network
+WebRTC/TURN evidence and disposable Phase 0 probe remain under
+[`spikes/webrtc-turn`](spikes/webrtc-turn/README.md).
+The Phase 2 engine evidence is recorded in the
+[Phase 2 build report](docs/phase-2/PHASE_2_BUILD_REPORT.md).
+The playable local UI, recovery, and full-match evidence is recorded in the
+[Phase 3 build report](docs/phase-3/PHASE_3_BUILD_REPORT.md).
+The online lobby/service evidence and deployment boundary are recorded in the
+[Phase 4 build report](docs/phase-4/PHASE_4_BUILD_REPORT.md).
+The peer transport, reliable synchronisation, recovery, and remaining
+live-device evidence are recorded in the
+[Phase 5 build report](docs/phase-5/PHASE_5_BUILD_REPORT.md).
+The complete online game, action-feedback, dropped-seat, and adversarial
+evidence is recorded in the
+[Phase 6 build report](docs/phase-6/PHASE_6_BUILD_REPORT.md).
+The results, settings, polish, privacy, responsive, and accessibility evidence
+is recorded in the
+[Phase 7 build report](docs/phase-7/PHASE_7_BUILD_REPORT.md).
+The GitHub-hosted online-beta source, credential boundary, emergency stop, and
+tester entry procedure are recorded in the
+[Phase 8 GitHub online-beta runbook](docs/phase-8/GITHUB_ONLINE_BETA.md).
 
-Phase 0 connectivity acceptance passed on 29 July 2026 between a broadband
-desktop and a cellular phone: the automatic path selected direct
-`srflx`/`srflx` candidates and forced TURN selected `relay`/`relay` over UDP.
+## Development
+
+Crazy Rummy requires Node.js 22 or later and pnpm:
+
+```text
+pnpm install
+pnpm dev
+pnpm check
+```
+
+`pnpm check` runs unit contracts, a production build, responsive/navigation
+browser smoke checks, the Stage 4 Open/Closed six-seat lobby acceptance, the
+Stage 5 real-Chromium three-seat host-star acceptance, the Stage 6
+real-Chromium three-seat online-game acceptance, the install/cache/offline PWA
+lifecycle check, and the Stage 7 responsive/results/settings browser gate
+(which retains the complete playable local-game acceptance).
+
+## Phase 0 documents
+
+- [Project scope](PROJECT_SCOPE.md)
+- [Mobile app layout](APP_LAYOUT.md)
+- [Implementation roadmap](ROADMAP.md)
+- [Decision register](docs/phase-0/STAGE_0_DECISION_REGISTER.md)
+- [Rules and state contract](docs/phase-0/RULES_AND_STATE_CONTRACT.md)
+- [Online/P2P architecture decision](docs/decisions/ADR-0001-ONLINE-P2P-ARCHITECTURE.md)
+- [Phase 0 sign-off gate](docs/phase-0/PHASE_0_SIGNOFF.md)
+
+## Current architectural direction
+
+The intended client is an installable mobile Progressive Web App in the same
+family as Murder Darts: compact, dark, tactile, and built around large phone
+controls.
+
+Players are remote rather than on the same local network. The app will poll a
+small internet rendezvous service to show available players or tables and to
+exchange WebRTC connection details. Match traffic should travel directly
+between phones when the network permits.
+
+The project owner does not have or want to administer a server and has fixed a
+zero operating budget. Phase 0 proved a hard-capped managed free-tier
+rendezvous and TURN route with no overage charging. A reliable internet-wide
+online-player list is not possible with a static browser app alone.
+
+Lobby discovery and online table formation use the Phase 4 provider-neutral
+session and Metered adapter when deployment configuration is present. Phase 5
+adds pair-scoped WebRTC links, a three-to-six-seat host star, per-seat
+authoritative projections, reliable command/event delivery, and recovery
+policy. Phase 6 locks ready rooms into private matches, composes those links
+with host authority and player-scoped game screens, persists recoverable match
+state, and applies dropped-seat consequences through the deterministic engine.
+Without provider configuration, the lobby shows an honest unavailable state
+and never invents remote tables.

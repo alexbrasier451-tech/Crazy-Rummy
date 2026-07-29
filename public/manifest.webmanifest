@@ -1,0 +1,44 @@
+{
+  "id": "./",
+  "name": "Crazy Rummy",
+  "short_name": "Crazy Rummy",
+  "description": "A phone-first, thirteen-hand Crazy Rummy card game for three to six remote players.",
+  "lang": "en-GB",
+  "dir": "ltr",
+  "start_url": "./#/lobby?source=installed",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0d0e",
+  "theme_color": "#0b0d0e",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "icons/crazy-rummy-any.v1.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/crazy-rummy-maskable.v1.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Rules",
+      "short_name": "Rules",
+      "description": "Open the cached Crazy Rummy rules.",
+      "url": "./#/rules",
+      "icons": [
+        {
+          "src": "icons/crazy-rummy-any.v1.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}

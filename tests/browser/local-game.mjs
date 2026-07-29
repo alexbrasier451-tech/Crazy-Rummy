@@ -1,0 +1,328 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import path from "node:path";
+import { promisify } from "node:util";
+import { chromium } from "playwright";
+
+import { startTestServer } from "./test-server.mjs";
+
+const execFileAsync = promisify(execFile);
+const root = path.resolve(import.meta.dirname, "../..");
+const dist = path.join(root, "dist");
+const browserErrors = [];
+
+async function buildProductionApp() {
+  const viteCli = path.join(root, "node_modules", "vite", "bin", "vite.js");
+  await execFileAsync(process.execPath, [viteCli, "build"], {
+    cwd: root,
+    env: { ...process.env, CRAZY_RUMMY_PWA_REVISION: "local-game-acceptance" },
+    windowsHide: true
+  });
+}
+
+function control(page, name) {
+  return page.locator(`[data-game-control="${name}"]`);
+}
+
+function workspace(page) {
+  return page.locator('[data-game-workspace="local"]');
+}
+
+async function phase(page) {
+  await workspace(page).waitFor({ state: "attached" });
+  return workspace(page).getAttribute("data-phase");
+}
+
+async function revision(page) {
+  await workspace(page).waitFor({ state: "attached" });
+  return Number(await workspace(page).getAttribute("data-revision"));
+}
+
+async function activeSeatId(page) {
+  const seatId = await workspace(page).getAttribute("data-active-seat-id");
+  assert.ok(seatId, "the local harness must expose the active fixture seat");
+  return seatId;
+}
+
+async function selectActiveSeat(page, { mayCompleteHand = false } = {}) {
+  const seatControl = control(page, "developer-seat");
+  if (mayCompleteHand) {
+    const outcome = await Promise.race([
+      seatControl.waitFor({ state: "visible", timeout: 30_000 })
+        .then(() => "control"),
+      page.waitForURL(/#\/hand-result$/, { timeout: 30_000 })
+        .then(() => "result"),
+      page.waitForTimeout(5_000).then(() => "timeout")
+    ]);
+    if (outcome === "result") return false;
+    if (outcome === "timeout") {
+      const diagnostics = await page.evaluate((capturedErrors) => {
+        const workspace = document.querySelector('[data-game-workspace="local"]');
+        const seat = document.querySelector('[data-game-control="developer-seat"]');
+        const sheet = document.querySelector(".game-sheet");
+        return {
+          phase: workspace?.dataset.phase,
+          revision: workspace?.dataset.revision,
+          activeSeatId: workspace?.dataset.activeSeatId,
+          seatConnected: Boolean(seat),
+          seatVisible: Boolean(seat?.getClientRects().length),
+          sheet: sheet?.innerText,
+          liveMessage: workspace?.querySelector(".game-live-message")?.textContent,
+          browserErrors: capturedErrors
+        };
+      }, browserErrors);
+      throw new Error(
+        `Neither the developer seat nor hand result became available at ${page.url()}; `
+        + `workspace count ${await workspace(page).count()}; `
+        + `state ${JSON.stringify(diagnostics)}`
+      );
+    }
+  }
+  await seatControl.selectOption(await activeSeatId(page), {
+    timeout: mayCompleteHand ? 5_000 : 30_000
+  });
+  return true;
+}
+
+async function expectOneAcceptedRevision(page, action, label) {
+  const before = await revision(page);
+  await action();
+  await page.waitForFunction((expected) => {
+    const node = document.querySelector('[data-game-workspace="local"]');
+    return Number(node?.dataset.revision) === expected;
+  }, before + 1);
+  assert.equal(await revision(page), before + 1, `${label} must advance exactly one revision`);
+}
+
+async function refreshPreservesAcceptedState(page, expectedPhase, label) {
+  const before = await revision(page);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await workspace(page).waitFor({ state: "attached" });
+  assert.equal(await revision(page), before, `${label} refresh must not duplicate an accepted command`);
+  assert.equal(await phase(page), expectedPhase, `${label} refresh must restore its turn phase`);
+}
+
+async function firstPrivateCard(page) {
+  const card = page.locator('[data-private-hand] [data-card-id]').first();
+  await card.waitFor();
+  return card;
+}
+
+async function clearSelection(page) {
+  const button = control(page, "clear-selection");
+  if (await button.isEnabled()) await button.click();
+}
+
+async function chooseCards(page, cardIds) {
+  for (const cardId of cardIds) {
+    const card = page.locator(`[data-private-hand] [data-card-id="${cardId}"]`);
+    await card.waitFor();
+    await card.tap();
+    assert.equal(await card.getAttribute("aria-pressed"), "true", `${cardId} should be selected by tap`);
+  }
+}
+
+async function discardFirstPrivateCard(page, label) {
+  const card = await firstPrivateCard(page);
+  await card.tap();
+  const before = await revision(page);
+  await control(page, "discard").click();
+  await control(page, "confirm-discard").click();
+  await Promise.race([
+    page.waitForURL(/#\/hand-result$/),
+    page.waitForFunction((expected) => {
+      const node = document.querySelector('[data-game-workspace="local"]');
+      return Number(node?.dataset.revision) === expected;
+    }, before + 1)
+  ]);
+  await page.waitForTimeout(25);
+  if (!/#\/hand-result$/.test(page.url())) {
+    assert.equal(await revision(page), before + 1, `${label} must advance exactly one revision`);
+  }
+}
+
+async function playOrdinaryTurnsUntilHandComplete(page) {
+  for (let turns = 0; turns < 180; turns += 1) {
+    if (/hand-result$/.test(new URL(page.url()).hash)) return;
+    const currentPhase = await phase(page);
+    if (!await selectActiveSeat(page, { mayCompleteHand: true })) return;
+    if (currentPhase === "AWAITING_DRAW") {
+      await expectOneAcceptedRevision(page, () => control(page, "draw-stock").click(), "stock draw");
+      continue;
+    }
+    if (currentPhase === "TABLE_PLAY") {
+      await expectOneAcceptedRevision(page, () => control(page, "finish-table-play").click(), "table finish");
+      continue;
+    }
+    if (currentPhase === "AWAITING_DISCARD") {
+      await discardFirstPrivateCard(page, "ordinary discard");
+      continue;
+    }
+    throw new Error(`Unexpected phase while completing hand 1: ${currentPhase}`);
+  }
+  assert.fail("ordinary UI turns did not finish hand 1 within the fixture bound");
+}
+
+await buildProductionApp();
+
+const testServer = await startTestServer({ root: dist });
+const browser = await chromium.launch({ headless: true });
+
+try {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    serviceWorkers: "block"
+  });
+  const page = await context.newPage();
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+
+  await page.goto(`${testServer.origin}/#/`, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`${testServer.origin}/#/game`, { waitUntil: "domcontentloaded" });
+  await workspace(page).waitFor();
+  assert.equal(await phase(page), "DEALER_INITIAL_DISCARD");
+  assert.equal(await page.locator('[data-shared-players] [data-card-id]').count(), 0,
+    "shared player DOM must never expose private card identities");
+  assert.equal(await page.locator('[data-shared-players] [data-private-hand]').count(), 0,
+    "shared player DOM must never contain a private-hand tray");
+
+  await selectActiveSeat(page);
+  const openingCard = await firstPrivateCard(page);
+  await openingCard.focus();
+  await page.keyboard.press("Space");
+  assert.equal(await openingCard.getAttribute("aria-pressed"), "true",
+    "a private card must support keyboard selection");
+  await refreshPreservesAcceptedState(page, "DEALER_INITIAL_DISCARD", "dealer opening");
+  const refreshedOpeningCard = await firstPrivateCard(page);
+  await refreshedOpeningCard.focus();
+  await page.keyboard.press("Space");
+  await expectOneAcceptedRevision(
+    page,
+    () => control(page, "discard").click()
+      .then(() => control(page, "confirm-opening-discard").click()),
+    "dealer opening discard"
+  );
+  assert.equal(await phase(page), "AWAITING_DRAW");
+  await refreshPreservesAcceptedState(page, "AWAITING_DRAW", "awaiting draw");
+
+  await selectActiveSeat(page);
+  await expectOneAcceptedRevision(page, () => control(page, "draw-stock").click(), "first stock draw");
+  assert.equal(await phase(page), "TABLE_PLAY");
+  await refreshPreservesAcceptedState(page, "TABLE_PLAY", "table play");
+
+  await chooseCards(page, ["diamonds:10"]);
+  await control(page, "open-meld").click();
+  await page.getByRole("radio", { name: "Set" }).check();
+  await control(page, "place-meld").click();
+  assert.match(
+    await page.getByRole("status").filter({ hasText: "That meld is not legal." }).innerText(),
+    /That meld is not legal\. Check its cards and wild identity\./
+  );
+  assert.equal(await page.locator('[data-game-sheet="compose-meld"]').count(), 1,
+    "a rejected meld must preserve the composer");
+  assert.equal(await page.locator('[data-private-hand] [data-card-id="diamonds:10"]').getAttribute("aria-pressed"), "true",
+    "a rejected meld must preserve card selection");
+  await control(page, "cancel-meld").click();
+  await clearSelection(page);
+
+  await chooseCards(page, ["diamonds:10", "clubs:10", "clubs:A"]);
+  await control(page, "open-meld").click();
+  await page.getByRole("radio", { name: "Set" }).check();
+  await page.getByLabel("Wild represents rank for Ace of clubs").selectOption("10");
+  await expectOneAcceptedRevision(page, () => control(page, "place-meld").click(), "opening set");
+  assert.match(await page.getByLabel("Shared table melds").innerText(), /set/i);
+  assert.equal(await page.locator("button article").count(), 0,
+    "meld controls must not nest non-interactive card articles inside a button");
+  assert.match(
+    await page.getByLabel("Shared table melds").getByRole("button").getAttribute("aria-label"),
+    /Set by .*Ace of clubs as 10/i,
+    "a meld control must expose its cards and represented wild as text"
+  );
+  await refreshPreservesAcceptedState(page, "TABLE_PLAY", "accepted opening meld");
+
+  await expectOneAcceptedRevision(page, () => control(page, "finish-table-play").click(), "finish table play");
+  assert.equal(await phase(page), "AWAITING_DISCARD");
+  await refreshPreservesAcceptedState(page, "AWAITING_DISCARD", "awaiting discard");
+  await discardFirstPrivateCard(page, "first turn discard");
+
+  await playOrdinaryTurnsUntilHandComplete(page);
+  await page.waitForURL(/#\/hand-result$/);
+  const handResult = page.locator('[data-screen="hand-result"]');
+  await handResult.waitFor();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await handResult.waitFor();
+  assert.match(await handResult.innerText(), /Hand 01 complete/i,
+    "refresh recovery must retain the accepted hand-complete result");
+  await handResult.getByRole("heading", { name: "Your remaining-card score" }).waitFor();
+  assert.match(
+    await handResult.getByRole("heading", { name: "Next hand" }).locator("xpath=..").innerText(),
+    /Hand 2: 2 wild; .* deals first/i
+  );
+  await page.getByRole("button", { name: "All fixture seats continue" }).click();
+  await page.waitForURL(/#\/game$/);
+
+  await control(page, "run-automated-match").click();
+  await page.waitForURL(/#\/final-result$/);
+  const finalResult = page.locator('[data-screen="final-result"]');
+  await finalResult.waitFor();
+  await finalResult.getByRole("heading", { name: "Hand-by-hand results" }).waitFor();
+  const history = finalResult.getByRole("heading", { name: "Hand-by-hand results" }).locator("xpath=..");
+  assert.equal(await history.getByRole("listitem").count(), 13);
+  assert.match(
+    await history.getByRole("listitem").first().innerText(),
+    /north \+\d+.*east \+\d+.*south \+\d+/i
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (text) => { globalThis.__copiedResult = text; } }
+    });
+  });
+  await finalResult.getByRole("button", { name: "Copy result summary" }).click();
+  const copiedResult = await page.evaluate(() => globalThis.__copiedResult);
+  assert.match(copiedResult, /Crazy Rummy result[\s\S]*Final standings:[\s\S]*Hand 01/);
+  assert.doesNotMatch(copiedResult, /clubs:A|diamonds:10|roomSecret|seatSecret/i);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await finalResult.waitFor();
+  assert.equal(await history.getByRole("listitem").count(), 13);
+  await page.getByRole("button", { name: "Start a new local match" }).click();
+  await page.waitForURL(/#\/game$/);
+  assert.equal(await phase(page), "DEALER_INITIAL_DISCARD", "new match must restart at the opening discard");
+
+  await page.goto(`${testServer.origin}/#/identity`, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Display name").fill("Browser Fixture");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+  await page.waitForURL(/#\/lobby$/);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.goto(`${testServer.origin}/#/identity`, { waitUntil: "domcontentloaded" });
+  assert.equal(await page.getByLabel("Display name").inputValue(), "Browser Fixture");
+  await page.goto(`${testServer.origin}/#/settings`, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Card size").selectOption("Large");
+  await page.getByLabel("Default hand sorting").selectOption("Suit");
+  await page.getByLabel("Motion").selectOption("Reduced");
+  await page.getByLabel("High contrast and suit labels").check();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  assert.equal(await page.getByLabel("Display name").inputValue(), "Browser Fixture");
+  assert.equal(await page.getByLabel("Card size").inputValue(), "Large");
+  assert.equal(await page.getByLabel("Default hand sorting").inputValue(), "Suit");
+  assert.equal(await page.getByLabel("Motion").inputValue(), "Reduced");
+  assert.deepEqual(await page.locator("html").evaluate((node) => ({
+    cardSize: node.dataset.cardSize,
+    motion: node.dataset.motion,
+    contrast: node.dataset.contrast
+  })), { cardSize: "large", motion: "reduced", contrast: "high" });
+  await page.getByRole("heading", { name: "Latest completed match" }).waitFor();
+  assert.match(
+    await page.getByRole("heading", { name: "Latest completed match" }).locator("xpath=..").innerText(),
+    /13 accepted hand results retained on this device/i
+  );
+
+  await context.close();
+} finally {
+  await browser.close();
+  await testServer.close();
+}
+
+console.log("Stage 3 local-game browser acceptance passed.");
