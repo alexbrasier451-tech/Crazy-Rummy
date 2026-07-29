@@ -31,7 +31,6 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
   let snapshot = onlineSession.getSnapshot?.() ?? {};
   let pending = null;
   let message = null;
-  let preview = null;
   let createOpen = false;
   let joinOpen = false;
   const content = element("div", { className: "online-workspace" });
@@ -78,16 +77,20 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
       } }, code.wrapper, actionButton({ label: "Find and join table", type: "submit", disabled: busy, pending: pending === "join-code" }));
       items.push(form);
     }
-    const tableCards = tables.map((table) => element("article", { className: "table-card", dataset: { tableId: table.id } },
-      element("h3", { text: `${table.name} · ${table.occupied}/${table.capacity || "?"}` }),
-      copy(`Hosted by ${table.host} · ${table.state.toLowerCase()} · ${table.rules}`),
-      actionButton({ label: "Preview table", variant: "secondary", disabled: !online || busy, onActivate: () => { preview = table; rerender(); } })
-    ));
+    const tableCards = tables.map((table) => {
+      const joinRequest = `join:${table.id}`;
+      return element("article", { className: "table-card", dataset: { tableId: table.id } },
+        element("h3", { text: `${table.name} · ${table.occupied}/${table.capacity || "?"}` }),
+        copy(`Hosted by ${table.host} · ${table.state.toLowerCase()} · ${table.rules}`),
+        actionButton({
+          label: "Join table",
+          disabled: !online || busy,
+          pending: pending === joinRequest,
+          onActivate: () => run(joinRequest, "joinTable", { tableId: table.id })
+        })
+      );
+    });
     items.push(panel("Open tables", copy(`${tables.length} open · ${freshnessCopy(snapshot)}`), tableCards.length ? tableCards : copy("No open tables found right now. Create one or refresh.")));
-    if (preview) items.push(element("section", { className: "online-preview", "aria-label": "Table preview" },
-      element("h2", { text: preview.name }), copy(`Hosted by ${preview.host} · ${preview.occupied}/${preview.capacity} seats · ${preview.rules}`),
-      actionButton({ label: "Join table", disabled: busy, pending: pending === "join", onActivate: () => run("join", "joinTable", { tableId: preview.id }) })
-    ));
     content.replaceChildren(...items);
   };
   const run = async (name, method, args) => {

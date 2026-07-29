@@ -42,7 +42,8 @@ try {
     ["2 seats", "3 seats", "4 seats", "5 seats", "6 seats"]
   );
   await page.getByRole("button", { name: "Create a table" }).click();
-  await page.getByRole("button", { name: "Preview table" }).click();
+  assert.equal(await page.getByRole("button", { name: "Preview table" }).count(), 0,
+    "Open tables should expose a direct join instead of an intermediate preview");
   await page.getByRole("button", { name: "Join table" }).click();
   await page.getByRole("heading", { level: 1, name: "Waiting room" }).waitFor();
   await page.getByRole("button", { name: "I’m ready" }).click();

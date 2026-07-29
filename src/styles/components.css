@@ -636,7 +636,7 @@ button.playing-card {
   display: flex;
 }
 
-[data-motion] {
+[data-motion-active] {
   will-change: transform, opacity;
 }
 

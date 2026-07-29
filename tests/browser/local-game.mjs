@@ -214,6 +214,14 @@ try {
   await actionMenu.waitFor();
   assert.equal(await actionMenu.getAttribute("aria-modal"), null,
     "Actions must be a non-modal disclosure so the table and hand remain interactive");
+  const actionMenuBox = await actionMenu.boundingBox();
+  const actionViewport = page.viewportSize();
+  assert.ok(actionMenuBox && actionViewport,
+    "the floating Actions menu must have a measurable viewport position");
+  assert.ok(Math.abs((actionMenuBox.x + (actionMenuBox.width / 2)) - (actionViewport.width / 2)) <= 2,
+    "the floating Actions menu must be horizontally centred");
+  assert.ok(Math.abs((actionMenuBox.y + (actionMenuBox.height / 2)) - (actionViewport.height / 2)) <= 2,
+    "the floating Actions menu must be vertically centred");
   await actionMenu.getByText(/No turn action is available on this device/).waitFor();
   await control(page, "close-actions").click();
   await control(page, "open-actions").focus();
