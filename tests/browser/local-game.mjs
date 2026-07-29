@@ -223,9 +223,11 @@ try {
       tableOverflowY: tableStyle?.overflowY,
       stockTop: Math.round(stock?.getBoundingClientRect().top ?? -1),
       discardTop: Math.round(discard?.getBoundingClientRect().top ?? -2),
-      handBottom: Math.round(hand?.getBoundingClientRect().bottom ?? 0),
       launcherTop: Math.round(launcher?.getBoundingClientRect().top ?? -1),
-      launcherPosition: launcherStyle?.position
+      launcherRight: Math.round(launcher?.getBoundingClientRect().right ?? -1),
+      launcherPosition: launcherStyle?.position,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth
     };
   });
   assert.ok(
@@ -236,10 +238,30 @@ try {
     "the phone table should participate in the page's single vertical scroll");
   assert.equal(phoneLayout.stockTop, phoneLayout.discardTop,
     "stock and discard should share a compact row on a phone");
-  assert.equal(phoneLayout.launcherPosition, "static",
-    "the phone Actions launcher must remain in document flow");
-  assert.ok(phoneLayout.launcherTop >= phoneLayout.handBottom,
-    "the phone Actions launcher must not cover the private hand");
+  assert.equal(phoneLayout.launcherPosition, "fixed",
+    "the phone Actions launcher must follow the viewport");
+  assert.ok(phoneLayout.launcherTop >= 0 && phoneLayout.launcherTop < phoneLayout.viewportHeight,
+    "the floating Actions launcher must stay vertically inside the phone viewport");
+  assert.ok(phoneLayout.launcherRight > 0 && phoneLayout.launcherRight <= phoneLayout.viewportWidth,
+    "the floating Actions launcher must stay horizontally inside the phone viewport");
+  const floatingTopBeforeScroll = phoneLayout.launcherTop;
+  await page.evaluate(() => window.scrollBy(0, 160));
+  const floatingTopAfterScroll = await page.locator(".game-action-launch").evaluate((node) =>
+    Math.round(node.getBoundingClientRect().top));
+  assert.ok(Math.abs(floatingTopAfterScroll - floatingTopBeforeScroll) <= 1,
+    "the floating Actions launcher must follow the screen while the table scrolls");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const handToolsToggle = control(page, "toggle-hand-tools");
+  assert.equal(await handToolsToggle.getAttribute("aria-expanded"), "true",
+    "hand controls should begin expanded");
+  await handToolsToggle.click();
+  await page.getByText(/Sort: Rank · Selected cards: 0/).waitFor();
+  assert.equal(await page.getByLabel("Sort private hand").count(), 0,
+    "minimised hand controls should show only their details");
+  assert.equal(await control(page, "toggle-hand-tools").getAttribute("aria-expanded"), "false");
+  assert.match(await control(page, "toggle-hand-tools").innerText(), /Maximise hand controls/);
+  await control(page, "toggle-hand-tools").click();
+  await page.getByLabel("Sort private hand").waitFor();
   await openActions(page);
   const actionMenu = page.getByRole("region", { name: "Actions", exact: true });
   await actionMenu.waitFor();

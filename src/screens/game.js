@@ -273,7 +273,8 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     handledLastActions: new Set(),
     previousNetworkMode: null,
     networkAnnouncements: new Set(),
-    showDetails: false
+    showDetails: false,
+    handToolsMinimized: false
   };
 
   const workspace = element("div", {
@@ -1248,14 +1249,57 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     });
     tray.dataset.privateHand = "true";
     tray.querySelectorAll(".playing-card").forEach((node, index) => { node.dataset.cardId = cards[index]; });
-    const handSection = element("section", { className: "game-private-hand", "aria-label": "Your private hand" }, tray, sortControls,
-      element("p", {
-        className: "game-selection-count",
-        role: "status",
-        "aria-live": "polite",
-        text: `Selected cards: ${selected.size}`
-      }),
-      commandButton("Clear selection", () => { ui.selected.clear(); ui.discardConfirm = false; render(); }, { variant: "quiet", disabled: !selected.size, name: "clear-selection" })
+    const handToolsId = "game-hand-tools-body";
+    const handToolsToggle = commandButton(
+      ui.handToolsMinimized ? "Maximise hand controls" : "Minimise hand controls",
+      () => {
+        ui.handToolsMinimized = !ui.handToolsMinimized;
+        render();
+      },
+      { variant: "quiet", name: "toggle-hand-tools" }
+    );
+    handToolsToggle.setAttribute("aria-expanded", String(!ui.handToolsMinimized));
+    handToolsToggle.setAttribute("aria-controls", handToolsId);
+    const handTools = element(
+      "section",
+      {
+        className: "game-hand-tools",
+        "aria-label": "Hand controls",
+        dataset: { minimized: String(ui.handToolsMinimized) }
+      },
+      element(
+        "div",
+        { className: "game-hand-tools__header" },
+        element("p", {
+          className: "game-hand-tools__summary",
+          role: "status",
+          "aria-live": "polite",
+          text: `Sort: ${ui.sort[0].toUpperCase()}${ui.sort.slice(1)} · Selected cards: ${selected.size}`
+        }),
+        handToolsToggle
+      ),
+      ui.handToolsMinimized
+        ? null
+        : element(
+            "div",
+            { id: handToolsId, className: "game-hand-tools__body" },
+            sortControls,
+            element("p", {
+              className: "game-selection-count",
+              text: `${selected.size} card${selected.size === 1 ? "" : "s"} selected`
+            }),
+            commandButton("Clear selection", () => {
+              ui.selected.clear();
+              ui.discardConfirm = false;
+              render();
+            }, { variant: "quiet", disabled: !selected.size, name: "clear-selection" })
+          )
+    );
+    const handSection = element(
+      "section",
+      { className: "game-private-hand", "aria-label": "Your private hand" },
+      tray,
+      handTools
     );
     if (networkPresentation) {
       workspace.append(connectionState({

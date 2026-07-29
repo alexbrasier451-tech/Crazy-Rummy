@@ -11,6 +11,12 @@ const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage();
   await page.goto(`${server.origin}/tests/browser/game-flow.html`, { waitUntil: "domcontentloaded" });
+  await page.locator('[data-game-control="toggle-hand-tools"]').click();
+  await page.getByText(/Sort: Rank · Selected cards: 0/).waitFor();
+  assert.equal(await page.getByLabel("Sort private hand").count(), 0,
+    "minimised hand controls show only their current details and maximise control");
+  await page.locator('[data-game-control="toggle-hand-tools"]').click();
+  await page.getByLabel("Sort private hand").waitFor();
   const wildCard = page.locator('[data-private-hand] [data-card-id="clubs:4"]');
   await wildCard.click();
   await page.getByLabel(/Select as lay-off destination/).click();
