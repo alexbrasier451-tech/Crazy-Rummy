@@ -9,6 +9,7 @@ import {
   createCompletedMatchSummary,
   createCompletedSummaryStorage
 } from "../local/completed-summary.js";
+import { createPlayerStatisticsStorage } from "../local/player-statistics.js";
 
 function freeze(value) { return Object.freeze(value); }
 function copy(value) { return value == null ? value : structuredClone(value); }
@@ -17,7 +18,8 @@ function copy(value) { return value == null ? value : structuredClone(value); }
 export function createOnlineMatchSession({
   bootstrap, playerId, initialState, createPeer, transport, createTransport = createHostStarTransport,
   createHostSession = createHostSyncSession, createClientSession = createClientSyncSession,
-  recoveryStorage = createMatchRecoveryStorage(), completedSummaryStorage = createCompletedSummaryStorage(), recoveryRecord = null, clock = () => Date.now(),
+  recoveryStorage = createMatchRecoveryStorage(), completedSummaryStorage = createCompletedSummaryStorage(),
+  playerStatisticsStorage = createPlayerStatisticsStorage(), recoveryRecord = null, clock = () => Date.now(),
   connectionTimeoutMs = 15_000, scheduler = globalThis, onTerminal
 } = {}) {
   const boot = validateMatchBootstrap(bootstrap, { playerId });
@@ -62,6 +64,14 @@ export function createOnlineMatchSession({
         if (summary) {
           // A finished match is retained only as this public-only record. It
           // must be written before the private recovery record is removed.
+          try {
+            playerStatisticsStorage.recordCompletedSummary?.({
+              playerId: boot.localPlayerId,
+              localSeatId: boot.localSeatId,
+              eventId: `online:${boot.matchId}:${summary.revision}`,
+              summary
+            });
+          } catch {}
           try { completedSummaryStorage.write?.(summary); } catch {}
           completedSummary = summary;
         }

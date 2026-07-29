@@ -407,6 +407,12 @@ try {
   await page.goto(`${testServer.origin}/#/identity`, { waitUntil: "domcontentloaded" });
   assert.equal(await page.getByLabel("Display name").inputValue(), "Browser Fixture");
   await page.goto(`${testServer.origin}/#/settings`, { waitUntil: "domcontentloaded" });
+  const statisticsPanel = page.getByRole("heading", { name: "Your Crazy Rummy record" }).locator("xpath=..");
+  await statisticsPanel.waitFor();
+  assert.match(await statisticsPanel.innerText(), /Stored only on this device for Browser Fixture/i);
+  assert.match(await statisticsPanel.innerText(), /Matches recorded\s+1/i);
+  assert.match(await statisticsPanel.innerText(), /Wins\s+\d+ \(\d+%\)/i);
+  assert.match(await statisticsPanel.innerText(), /Best final total\s+\d+/i);
   await page.getByLabel("Card size").selectOption("Large");
   await page.getByLabel("Default hand sorting").selectOption("Suit");
   await page.getByLabel("Motion").selectOption("Reduced");

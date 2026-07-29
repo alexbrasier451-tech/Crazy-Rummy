@@ -12,6 +12,7 @@ import {
   createCompletedSummaryStorage,
   validateCompletedMatchSummary
 } from "../../src/local/completed-summary.js";
+import { PLAYER_STATISTICS_STORAGE_PREFIX } from "../../src/local/player-statistics.js";
 import {
   LOCAL_STORAGE_KEYS,
   createLocalGameSession,
@@ -93,6 +94,7 @@ test("local completion stores a public-only summary and clearDeviceData removes 
   assert.equal(summary.completedHands.length, 13);
   assert.equal(JSON.stringify(summary).includes("cardIds"), false);
   assert.ok(storage.getItem(LOCAL_STORAGE_KEYS.completedSummary));
+  assert.equal(session.getSnapshot().playerStatistics.matchesRecorded, 1);
 
   session.reset();
   assert.equal(session.getSnapshot().completedSummary.completedHands.length, 13);
@@ -103,6 +105,13 @@ test("local completion stores a public-only summary and clearDeviceData removes 
   assert.equal(storage.getItem(LOCAL_STORAGE_KEYS.identity), null);
   assert.equal(storage.getItem(LOCAL_STORAGE_KEYS.preferences), null);
   assert.equal(session.getSnapshot().completedSummary, null);
+  assert.equal(session.getSnapshot().playerStatistics, null);
+  assert.equal(
+    [...Array(storage.length).keys()]
+      .map((index) => storage.key(index))
+      .some((key) => key.startsWith(PLAYER_STATISTICS_STORAGE_PREFIX)),
+    false
+  );
 });
 
 test("forfeit summaries retain only accepted public history and active standings", () => {
@@ -136,6 +145,7 @@ test("online terminal stores the public summary before removing private recovery
   const network = createControlledTopologyNetwork();
   const boot = createStage6Bootstraps({ matchId: state.gameId }).a;
   const writes = [];
+  const statisticsWrites = [];
   const removals = [];
   const operations = [];
   const session = createOnlineMatchSession({
@@ -144,12 +154,23 @@ test("online terminal stores the public summary before removing private recovery
     initialState: state,
     transport: network.endpoint("player-a"),
     recoveryStorage: { write() {}, writeComposition() {}, remove(matchId) { operations.push("recovery-remove"); removals.push(matchId); } },
+    playerStatisticsStorage: {
+      recordCompletedSummary(input) {
+        operations.push("statistics-write");
+        statisticsWrites.push(input);
+        return { applied: true };
+      }
+    },
     completedSummaryStorage: { write(summary) { operations.push("summary-write"); writes.push(summary); return null; } }
   });
   await session.start();
   assert.equal(writes.length, 1);
+  assert.equal(statisticsWrites.length, 1);
+  assert.equal(statisticsWrites[0].playerId, boot.localPlayerId);
+  assert.equal(statisticsWrites[0].localSeatId, boot.localSeatId);
+  assert.equal(statisticsWrites[0].eventId, `online:${boot.matchId}:${state.revision}`);
   assert.deepEqual(removals, [state.gameId]);
-  assert.deepEqual(operations, ["summary-write", "recovery-remove"]);
+  assert.deepEqual(operations, ["statistics-write", "summary-write", "recovery-remove"]);
   assert.equal(JSON.stringify(writes[0]).includes("roomSecret"), false);
   assert.equal(writes[0].mode, "ONLINE");
   assert.equal(session.getSnapshot().completedSummary.gameId, state.gameId);

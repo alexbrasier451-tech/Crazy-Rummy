@@ -5,6 +5,7 @@ import { DEFAULT_RULES, HAND_SCHEDULE } from "../../src/engine/index.js";
 import {
   completedSummaryReference,
   normalizeSettingsPreferences,
+  playerStatisticsReference,
   rulesReference
 } from "../../src/screens/reference.js";
 
@@ -39,6 +40,28 @@ test("settings presents the latest public completed summary without private hist
     ]
   });
   assert.equal(JSON.stringify(presented).includes("must-not-appear"), false);
+});
+
+test("settings reduces stored statistics to a compact player record", () => {
+  assert.deepEqual(playerStatisticsReference({
+    matchesRecorded: 5,
+    matchesFinished: 4,
+    matchesEndedEarly: 1,
+    matchWins: 2,
+    forfeitWins: 1,
+    handsWon: 17,
+    bestFinalTotal: 83,
+    appliedEventIds: ["must-not-appear"]
+  }), {
+    matchesRecorded: 5,
+    wins: 3,
+    winRate: 60,
+    handsWon: 17,
+    bestFinalTotal: 83,
+    matchesFinished: 4,
+    matchesEndedEarly: 1
+  });
+  assert.equal(playerStatisticsReference({ matchesRecorded: 0 }), null);
 });
 
 test("settings normalization preserves declared preferences and disables unavailable haptics", () => {

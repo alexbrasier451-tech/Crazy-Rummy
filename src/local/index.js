@@ -15,6 +15,7 @@ import {
   createCompletedMatchSummary,
   createCompletedSummaryStorage
 } from "./completed-summary.js";
+import { createPlayerStatisticsStorage } from "./player-statistics.js";
 
 /** Versioned keys deliberately separate recoverable authority from UI settings. */
 export const LOCAL_STORAGE_VERSION = 1;
@@ -23,7 +24,8 @@ export const LOCAL_STORAGE_KEYS = Object.freeze({
   localSeat: "crazy-rummy.local.v1.local-seat",
   identity: "crazy-rummy.local.v1.identity",
   preferences: "crazy-rummy.local.v1.preferences",
-  completedSummary: "crazy-rummy.local.v1.completed-summary"
+  completedSummary: "crazy-rummy.local.v1.completed-summary",
+  matchInstance: "crazy-rummy.local.v1.match-instance"
 });
 
 export const DEFAULT_LOCAL_SEATS = Object.freeze(["north", "east", "south"]);
@@ -111,6 +113,12 @@ function defaultOnlinePlayerId() {
   return `local-${suffix}`;
 }
 
+function defaultMatchInstanceId() {
+  const suffix = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `local-match-${suffix}`;
+}
+
 function normalizeSeats(seats) {
   const source = seats ?? DEFAULT_LOCAL_SEATS.map((seatId) => ({
     seatId,
@@ -185,6 +193,12 @@ export function createLocalGameSession(options = {}) {
     key: LOCAL_STORAGE_KEYS.completedSummary,
     storageVersion: LOCAL_STORAGE_VERSION
   });
+  const playerStatisticsStorage = options.playerStatisticsStorage
+    ?? createPlayerStatisticsStorage({ storage });
+  const createMatchInstanceId = options.createMatchInstanceId ?? defaultMatchInstanceId;
+  if (typeof createMatchInstanceId !== "function") {
+    throw new TypeError("createMatchInstanceId must be a function.");
+  }
   const gameId = options.gameId ?? DEFAULT_LOCAL_GAME_ID;
   const shuffleSeed = options.shuffleSeed ?? DEFAULT_LOCAL_SHUFFLE_SEED;
   let persistenceError = null;
@@ -197,6 +211,10 @@ export function createLocalGameSession(options = {}) {
   const seatIds = Object.keys(state.seats);
   let localSeatId = readRecord(storage, LOCAL_STORAGE_KEYS.localSeat) ?? options.localSeatId ?? seatIds[0];
   if (!seatIds.includes(localSeatId)) localSeatId = seatIds[0];
+  let matchInstanceId = readRecord(storage, LOCAL_STORAGE_KEYS.matchInstance);
+  if (typeof matchInstanceId !== "string" || !matchInstanceId) {
+    matchInstanceId = createMatchInstanceId();
+  }
   const storedIdentity = readRecord(storage, LOCAL_STORAGE_KEYS.identity);
   const createPlayerId = options.createPlayerId ?? defaultOnlinePlayerId;
   if (typeof createPlayerId !== "function") throw new TypeError("createPlayerId must be a function.");
@@ -220,15 +238,28 @@ export function createLocalGameSession(options = {}) {
   let commandSequence = 0;
   let lastCommand = null;
 
+  function recordStatistics(summary) {
+    if (!summary || typeof identity.playerId !== "string" || !identity.playerId) return null;
+    return playerStatisticsStorage.recordCompletedSummary?.({
+      playerId: identity.playerId,
+      localSeatId,
+      eventId: `local:${matchInstanceId}:${summary.revision}`,
+      summary
+    }) ?? null;
+  }
+
+  if (currentSummary) recordStatistics(currentSummary);
+
   function persistAcceptedState() {
     persistenceError = writeRecord(storage, LOCAL_STORAGE_KEYS.session, state);
     const identityError = writeRecord(storage, LOCAL_STORAGE_KEYS.identity, identity);
     const preferenceError = writeRecord(storage, LOCAL_STORAGE_KEYS.preferences, preferences);
     const seatError = writeRecord(storage, LOCAL_STORAGE_KEYS.localSeat, localSeatId);
+    const instanceError = writeRecord(storage, LOCAL_STORAGE_KEYS.matchInstance, matchInstanceId);
     const summaryError = completedSummary
       ? completedSummaryStorage.write(completedSummary)
       : null;
-    persistenceError ??= identityError ?? preferenceError ?? seatError ?? summaryError;
+    persistenceError ??= identityError ?? preferenceError ?? seatError ?? instanceError ?? summaryError;
   }
 
   function snapshot() {
@@ -241,6 +272,9 @@ export function createLocalGameSession(options = {}) {
       localSeatId,
       identity: copy(identity),
       preferences: copy(preferences),
+      playerStatistics: identity.playerId
+        ? copy(playerStatisticsStorage.read?.(identity.playerId))
+        : null,
       completedSummary: completedSummary ? copy(completedSummary) : null,
       status: {
         gameId: state.gameId,
@@ -285,8 +319,12 @@ export function createLocalGameSession(options = {}) {
       ? { accepted: true, duplicate: result.duplicate, revision: result.revision, commandId: command.clientCommandId }
       : { accepted: false, reason: result.reason, detail: result.detail ?? null, commandId: command.clientCommandId };
     if (result.accepted && !result.duplicate) {
+      const previousLifecycle = state.lifecycle;
       state = result.state;
       completedSummary = summaryFor(state, localSeatId) ?? completedSummary;
+      if (previousLifecycle !== LIFECYCLE.COMPLETE && state.lifecycle === LIFECYCLE.COMPLETE) {
+        recordStatistics(completedSummary);
+      }
       persistAcceptedState();
     }
     notify();
@@ -316,6 +354,7 @@ export function createLocalGameSession(options = {}) {
 
   function reset() {
     removeRecord(storage, LOCAL_STORAGE_KEYS.session);
+    matchInstanceId = createMatchInstanceId();
     state = fixtureState({ gameId, shuffleSeed, seats: options.seats });
     localSeatId = Object.hasOwn(state.seats, localSeatId) ? localSeatId : Object.keys(state.seats)[0];
     lastCommand = null;
@@ -323,15 +362,18 @@ export function createLocalGameSession(options = {}) {
     return notify();
   }
 
-  /** Clear only browser-local identity, preferences, local fixture, and summaries. */
+  /** Clear only browser-local identity, preferences, statistics, fixture, and summaries. */
   function clearDeviceData() {
     removeRecord(storage, LOCAL_STORAGE_KEYS.session);
     removeRecord(storage, LOCAL_STORAGE_KEYS.localSeat);
     removeRecord(storage, LOCAL_STORAGE_KEYS.identity);
     removeRecord(storage, LOCAL_STORAGE_KEYS.preferences);
+    removeRecord(storage, LOCAL_STORAGE_KEYS.matchInstance);
     completedSummaryStorage.remove();
+    playerStatisticsStorage.clearAll?.();
     state = fixtureState({ gameId, shuffleSeed, seats: options.seats });
     localSeatId = Object.keys(state.seats)[0];
+    matchInstanceId = createMatchInstanceId();
     identity = {};
     preferences = {};
     completedSummary = null;

@@ -127,6 +127,39 @@
   width: 100%;
 }
 
+.career-stats {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.career-stat {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+  border: 1px solid var(--color-strong-edge);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--color-deep-panel);
+}
+
+.career-stat dt {
+  color: var(--color-muted-cream);
+  font-size: var(--text-sm);
+  font-weight: 800;
+}
+
+.career-stat dd {
+  margin: 0;
+  color: var(--color-ticket-gold);
+  font-size: clamp(1.2rem, 5vw, 1.8rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
 .field {
   display: grid;
   min-width: 0;
@@ -1030,6 +1063,12 @@
   }
 }
 
+@media (max-width: 21.99rem) {
+  .career-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 29.9375rem) {
   .game-table {
     max-height: none;
@@ -1164,6 +1203,10 @@
   .section-nav ol {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .career-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1194,6 +1237,7 @@
   .table-card,
   .identity-form,
   .settings-form,
+  .career-stat,
   .placeholder-notice,
   .action-dock,
   .section-nav,

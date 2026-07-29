@@ -194,7 +194,9 @@ test("corrupt or incompatible persisted authority fails closed to a deterministi
 
 test("identity, preferences, and a completed-match summary survive local storage", () => {
   const storage = createMemoryStorage();
-  const session = createLocalGameSession({ storage });
+  let matchInstance = 0;
+  const createMatchInstanceId = () => `statistics-match-${++matchInstance}`;
+  const session = createLocalGameSession({ storage, createMatchInstanceId });
   session.setIdentity({ playerId: "alex", displayName: "Alex" });
   session.setPreferences({ reducedMotion: true, theme: "night" });
   const complete = session.runAutomatedMatch();
@@ -202,11 +204,24 @@ test("identity, preferences, and a completed-match summary survive local storage
   assert.equal(parsed(storage, LOCAL_STORAGE_KEYS.identity).displayName, "Alex");
   assert.equal(parsed(storage, LOCAL_STORAGE_KEYS.preferences).reducedMotion, true);
   assert.equal(parsed(storage, LOCAL_STORAGE_KEYS.completedSummary).completedHands.length, 13);
+  assert.equal(complete.playerStatistics.matchesRecorded, 1);
+  assert.equal(complete.playerStatistics.matchesFinished, 1);
 
-  const reloaded = createLocalGameSession({ storage });
+  const reloaded = createLocalGameSession({ storage, createMatchInstanceId });
   assert.deepEqual(reloaded.getSnapshot().identity, { playerId: "alex", displayName: "Alex" });
   assert.deepEqual(reloaded.getSnapshot().preferences, { reducedMotion: true, theme: "night" });
   assert.equal(reloaded.getSnapshot().completedSummary.completedHands.length, 13);
+  assert.equal(reloaded.getSnapshot().playerStatistics.matchesRecorded, 1,
+    "restoring a completed match must not record it twice");
+
+  reloaded.reset();
+  const secondComplete = reloaded.runAutomatedMatch();
+  assert.equal(secondComplete.state.gameId, complete.state.gameId,
+    "local fixtures may deliberately reuse their public game ID");
+  assert.equal(secondComplete.playerStatistics.matchesRecorded, 2,
+    "a fresh local match instance must still be counted");
+  const secondReload = createLocalGameSession({ storage, createMatchInstanceId });
+  assert.equal(secondReload.getSnapshot().playerStatistics.matchesRecorded, 2);
 });
 
 test("accepted-command automation traverses all thirteen hands through the engine", () => {

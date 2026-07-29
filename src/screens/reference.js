@@ -140,6 +140,73 @@ export function completedSummaryReference(summary) {
   });
 }
 
+export function playerStatisticsReference(statistics) {
+  if (
+    !statistics
+    || !Number.isInteger(statistics.matchesRecorded)
+    || statistics.matchesRecorded < 1
+    || !Number.isInteger(statistics.matchesFinished)
+    || !Number.isInteger(statistics.matchesEndedEarly)
+    || !Number.isInteger(statistics.matchWins)
+    || !Number.isInteger(statistics.forfeitWins)
+    || !Number.isInteger(statistics.handsWon)
+    || statistics.matchesFinished + statistics.matchesEndedEarly !== statistics.matchesRecorded
+    || (
+      statistics.bestFinalTotal !== null
+      && (!Number.isFinite(statistics.bestFinalTotal) || statistics.bestFinalTotal < 0)
+    )
+  ) return null;
+  const wins = statistics.matchWins + statistics.forfeitWins;
+  return Object.freeze({
+    matchesRecorded: statistics.matchesRecorded,
+    wins,
+    winRate: Math.round((wins / statistics.matchesRecorded) * 100),
+    handsWon: statistics.handsWon,
+    bestFinalTotal: statistics.bestFinalTotal,
+    matchesFinished: statistics.matchesFinished,
+    matchesEndedEarly: statistics.matchesEndedEarly
+  });
+}
+
+function playerStatisticsPanel(statistics, displayName) {
+  const record = playerStatisticsReference(statistics);
+  if (!displayName) {
+    return panel(
+      "Your Crazy Rummy record",
+      copy("Set a player name to keep device-local match statistics.")
+    );
+  }
+  if (!record) {
+    return panel(
+      "Your Crazy Rummy record",
+      copy(`No recorded matches for ${displayName} yet. Statistics appear after a match reaches an accepted final result.`)
+    );
+  }
+  const metric = (label, value) => element(
+    "div",
+    { className: "career-stat" },
+    element("dt", { text: label }),
+    element("dd", { text: value })
+  );
+  return panel(
+    "Your Crazy Rummy record",
+    copy(`Stored only on this device for ${displayName}.`),
+    element(
+      "dl",
+      { className: "career-stats", "aria-label": `Device-local statistics for ${displayName}` },
+      metric("Matches recorded", record.matchesRecorded),
+      metric("Wins", `${record.wins} (${record.winRate}%)`),
+      metric("Hands won", record.handsWon),
+      metric("Best final total", record.bestFinalTotal ?? "—")
+    ),
+    copy(
+      `${record.matchesFinished} finished normally`
+      + (record.matchesEndedEarly ? ` · ${record.matchesEndedEarly} ended early` : "")
+      + ". Joint and forfeit wins are included; lower final totals are better."
+    )
+  );
+}
+
 export function settingsScreen({
   pwaStatus,
   activateUpdate,
@@ -214,13 +281,13 @@ export function settingsScreen({
       if (!clearArmed) {
         clearArmed = true;
         clearData.querySelector(".action__label").textContent = "Confirm clear device data";
-        saved.textContent = "This clears this device’s local identity, preferences, local fixture, completed summaries, and all online recovery records.";
+        saved.textContent = "This clears this device’s local identity, preferences, player statistics, local fixture, completed summaries, and all online recovery records.";
         return;
       }
       if (typeof clearDeviceData === "function") void clearDeviceData();
       else localSession?.clearDeviceData?.();
       name.input.value = "";
-      saved.textContent = "Device-local identity, preferences, fixture, summaries, and all online recovery records cleared.";
+      saved.textContent = "Device-local identity, preferences, player statistics, fixture, summaries, and all online recovery records cleared.";
       clearData.disabled = true;
     }
   });
@@ -249,6 +316,7 @@ export function settingsScreen({
       copy("Identity and preferences are stored locally and restored after refresh."),
       form,
       panel("Install and offline status", ...installContent),
+      playerStatisticsPanel(snapshot.playerStatistics, identity.displayName),
       latestSummary ? panel(
         "Latest completed match",
         copy(latestSummary.outcome),
@@ -262,7 +330,7 @@ export function settingsScreen({
       ),
       panel(
         "Privacy and data",
-        copy("This device keeps only your local identity, preferences, local fixture state, and public-only completed-match summaries. Summaries do not include card history, invite codes, room secrets, or recovery secrets."),
+        copy("This device keeps only your local identity, preferences, aggregate player statistics, local fixture state, and public-only completed-match summaries. Statistics and summaries do not include card history, invite codes, room secrets, or recovery secrets."),
         copy("Clear device data removes exactly those local records. It does not create a cloud account or delete another player’s device."),
         clearData
       )
