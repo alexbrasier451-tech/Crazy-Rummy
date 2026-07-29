@@ -34,7 +34,7 @@ should be decomposed again before implementation).
 
 - **Outcome:** Accept the thirteen-hand rules plus all edge cases needed by a
   deterministic engine.
-- **Work:** Encode Ace-low runs, wilds permitted in opening melds,
+- **Work:** Encode Ace-high-or-low, no-wrap runs, wilds permitted in opening melds,
   reclaim-and-hold wilds, natural J/Q/K at 10, current wilds at 50, and the
   documented basic edge defaults.
 - **Done when:** Every rule fixture has one legal result and the owner accepts

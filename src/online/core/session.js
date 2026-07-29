@@ -9,6 +9,7 @@ import {
   frozenCopy,
   normalizePlayer
 } from "./contract.js";
+import { RULES_VERSION as DEFAULT_LOBBY_RULES_VERSION } from "../../config.js";
 import { ONLINE_ERROR, OnlineLobbyError, asOnlineLobbyError } from "./errors.js";
 
 const DEFAULT_POLL_MS = 5_000;
@@ -57,7 +58,7 @@ export function createOnlineLobbySession(options = {}) {
   const service = options.service;
   const player = normalizePlayer(options.player);
   const protocolVersion = assertVersion(options.protocolVersion ?? DEFAULT_PROTOCOL_VERSION, "protocol version");
-  const rulesVersion = assertVersion(options.rulesVersion ?? "phase-0-2026-07-29-2p", "rules version");
+  const rulesVersion = assertVersion(options.rulesVersion ?? DEFAULT_LOBBY_RULES_VERSION, "rules version");
   const clock = options.clock ?? Date.now;
   const scheduler = options.scheduler ?? defaultScheduler();
   const random = options.random ?? Math.random;

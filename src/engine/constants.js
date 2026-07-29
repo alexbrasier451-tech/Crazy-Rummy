@@ -1,5 +1,5 @@
 export const SCHEMA_VERSION = 2;
-export const RULES_VERSION = "crazy-rummy/2";
+export const RULES_VERSION = "crazy-rummy/3";
 export const SYSTEM_ACTOR_SEAT_ID = "system";
 
 export const SUITS = Object.freeze([
@@ -140,6 +140,7 @@ export const DEFAULT_RULES = Object.freeze({
   handCount: 13,
   clockwise: true,
   aceLowRuns: true,
+  aceHighRuns: true,
   wildsAllowedInOpeningMeld: true,
   reclaimedWildMayBeHeld: true,
   stockExhaustionEndsAfterTurn: true,

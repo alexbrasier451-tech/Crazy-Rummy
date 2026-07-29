@@ -17,6 +17,7 @@ test("the Phase 2 engine barrel exposes the stable deterministic API", () => {
     "createLobbyState",
     "createSeededDeck",
     "executeCommand",
+    "legalRunExtensionRanks",
     "migrateSnapshot",
     "playerView",
     "projectEvent",

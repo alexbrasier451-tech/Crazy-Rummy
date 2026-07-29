@@ -60,6 +60,8 @@ test("completed summaries are public-only allowlists and malformed data fails cl
   const view = playerView(state, "a");
   const summary = createCompletedMatchSummary(view);
   assert.equal(summary.mode, "LOCAL");
+  assert.equal(summary.rules.aceLowRuns, true);
+  assert.equal(summary.rules.aceHighRuns, true);
   assert.equal(summary.completedHands.length, 13);
   assert.equal(summary.seats.length, 3);
   const wire = JSON.stringify(summary);

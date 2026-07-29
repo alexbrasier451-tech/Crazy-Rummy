@@ -27,6 +27,7 @@ function fixtureState() {
       handCount: 13,
       clockwise: true,
       aceLowRuns: true,
+      aceHighRuns: true,
       wildsAllowedInOpeningMeld: true,
       reclaimedWildMayBeHeld: true,
       stockExhaustionEndsAfterTurn: true,

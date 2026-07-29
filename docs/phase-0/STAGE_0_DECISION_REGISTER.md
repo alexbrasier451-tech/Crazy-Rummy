@@ -49,7 +49,7 @@ document draft, but it is not authority for Phase 1 production code.
 | P-05 | Pause and reserve a lost seat for five minutes. Drop an unrecovered guest; abandon without a result if the host does not return. | The timeout and terminal behaviour are owner-confirmed; implementation must still prove them. |
 | P-06 | No chat, public profiles, global ranking, or money play. | Keeps first-release abuse and legal scope bounded; owner can reopen later. |
 | P-07 | Lobby identity is a locally stored display name plus random opaque ID; no email/password account. | Open tables still require safe names, throttling, host controls, and a public-discovery kill switch. |
-| P-08 | Aces are low; opening melds may contain wilds; reclaimed wilds may be held; natural J/Q/K score 10; current wilds score 50. | These family rules are confirmed rather than provisional. |
+| P-08 | Aces are low or high in runs, but runs never wrap; opening melds may contain wilds; reclaimed wilds may be held; natural J/Q/K score 10; current wilds score 50. | These family rules are confirmed rather than provisional. |
 | P-09 | The player who draws the final stock card completes the turn; if they do not go out, the hand ends and all remaining hands are scored. One-card hands use normal turn rules. | This uses the cited basic Crazy Rummy rule and treats the supplied summary's omitted special one-card restriction as not adopted. |
 
 ## Blocking and resolved owner decisions
@@ -91,8 +91,9 @@ not historic devices or abandoned browsers.
 
 ### D-04 — Ace position in natural runs — resolved
 
-Ace is low only: `A-2-3` is valid; `Q-K-A` and `K-A-2` are invalid. An Ace
-acting as the hand's wild rank can represent any otherwise legal position.
+Ace may be low or high: `A-2-3` and `Q-K-A` are valid. Runs never wrap, so
+`K-A-2` is invalid. An Ace acting as the hand's wild rank can represent any
+otherwise legal position.
 
 ### D-05 — Opening meld and wild rules — resolved
 

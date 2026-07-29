@@ -11,7 +11,12 @@ import {
   scoreStrip
 } from "../components/index.js";
 import { normalizePreferences } from "../app/preferences.js";
-import { inferMeldType, legalMeldInterpretations, validateLayoff } from "../engine/index.js";
+import {
+  inferMeldType,
+  legalMeldInterpretations,
+  legalRunExtensionRanks,
+  validateLayoff
+} from "../engine/index.js";
 import {
   RANKS,
   SUITS,
@@ -160,27 +165,24 @@ function layoffWildOptions({ meld, cardIds, wildRank, placement }) {
   }
 
   const suit = meldRunSuit(meld, wildRank);
-  const currentRanks = (meld?.slots ?? []).map((slot) => slot.represented?.rank).filter((rank) => RANKS.includes(rank));
-  const currentIndexes = currentRanks.map((rank) => RANKS.indexOf(rank));
-  if (!suit || !currentIndexes.length) return { byCardId: {}, problem: "The destination run has no usable suit or end." };
+  if (!suit) return { byCardId: {}, problem: "The destination run has no usable suit or end." };
   const count = cardIds.length;
-  const edge = placement === "START" ? Math.min(...currentIndexes) : Math.max(...currentIndexes);
-  const expectedIndexes = placement === "START"
-    ? Array.from({ length: count }, (_, index) => edge - count + index)
-    : Array.from({ length: count }, (_, index) => edge + index + 1);
-  if (expectedIndexes.some((index) => index < 0 || index >= RANKS.length)) {
+  const extensions = legalRunExtensionRanks(meld, { wildRank, placement, count });
+  if (!extensions.length) {
     return { byCardId: {}, problem: "There is not enough room at that end of the run." };
   }
   const naturalCards = cardIds.map(cardParts).filter((card) => card?.rank !== wildRank);
-  const expectedRanks = expectedIndexes.map((index) => RANKS[index]);
   const naturalRanks = naturalCards.map((card) => card.rank);
-  if (
-    naturalCards.some((card) => card.suit !== suit || !expectedRanks.includes(card.rank))
-    || new Set(naturalRanks).size !== naturalRanks.length
-  ) {
+  const compatibleExtensions = extensions.filter((expectedRanks) => (
+    naturalCards.every((card) => card.suit === suit && expectedRanks.includes(card.rank))
+    && new Set(naturalRanks).size === naturalRanks.length
+  ));
+  if (!compatibleExtensions.length) {
     return { byCardId: {}, problem: "Those natural cards cannot extend that end of this run." };
   }
-  const remainingRanks = expectedRanks.filter((rank) => !naturalRanks.includes(rank));
+  const remainingRanks = [...new Set(compatibleExtensions.flatMap((expectedRanks) => (
+    expectedRanks.filter((rank) => !naturalRanks.includes(rank))
+  )))];
   return {
     byCardId: Object.fromEntries(wildCards.map((cardId) => [cardId, {
       rankOptions: remainingRanks,

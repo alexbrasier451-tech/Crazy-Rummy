@@ -59,7 +59,7 @@ The state cannot become `connected` until:
    injected verifier.
 
 The version fields are deliberately distinct. The current engine uses numeric
-schema `1` and rules version `crazy-rummy/2`; the lobby separately uses its
+schema `2` and rules version `crazy-rummy/3`; the lobby separately uses its
 Phase 4 compatibility vocabulary. The transport does not compare unlike
 versions.
 

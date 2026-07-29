@@ -17,6 +17,8 @@ test("rules reference covers the full fixed wild schedule and essential contract
   for (const required of ["table additions", "replacement", "going out", "stock exhaustion", "final ties", "13 hands"]) {
     assert.match(text, new RegExp(required));
   }
+  assert.match(text, /ace may be low \(a-2-3\) or high \(q-k-a\)/);
+  assert.match(text, /runs never wrap \(k-a-2 is invalid\)/);
 });
 
 test("settings presents the latest public completed summary without private history", () => {

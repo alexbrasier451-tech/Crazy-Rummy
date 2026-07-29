@@ -40,7 +40,7 @@ at creation and does not change it after the first deal.
 | Game result | Confirmed | Lowest cumulative score after hand 13 wins |
 | Opening meld wilds | Confirmed | A player's first complete set or run may contain one or more wild cards |
 | Reclaimed wild | Confirmed | A reclaimed wild enters the replacing player's hand and may be held, played, or discarded normally |
-| Ace in runs | Confirmed | Aces are low: A-2-3 is legal; Q-K-A and K-A-2 are illegal |
+| Ace in runs | Confirmed | Aces may be low or high: A-2-3 and Q-K-A are legal; K-A-2 is illegal because runs never wrap |
 | Court-card score | Confirmed | A natural Jack, Queen, or King always scores 10 |
 | Wild-card score | Confirmed | Every card of the current hand's wild rank scores 50 while left in hand, regardless of its printed rank |
 | Stock exhaustion | Accepted basic default | The player who draws the final stock card completes the turn; if they do not go out, the hand then ends and all remaining hands are scored |
@@ -55,7 +55,7 @@ Wild cards are permitted in a player's first complete set or run. The opening
 must still have one explicit legal meld interpretation and satisfy every
 ordinary set/run rule.
 
-The owner supplied Ace-low play as part of the rules. The remaining basic-rule
+The owner supplied Ace-high-or-low, no-wrap play as part of the rules. The remaining basic-rule
 and setup defaults in the register are accepted when the owner signs off
 Phase 0 unless explicitly changed before then.
 
@@ -116,8 +116,8 @@ the slot adopts that natural card's suit.
 
 A run is 3 or more consecutive ranks of one suit. A wild may occupy a missing
 position, but its represented `(suit, rank)` must always be recorded and visible
-on the table. Under the confirmed Ace-low rule, A-2-3 is consecutive and
-Q-K-A is not. Runs never wrap: K-A-2 is always illegal.
+on the table. Under the confirmed Ace-high-or-low rule, A-2-3 and Q-K-A are
+consecutive. Runs never wrap: K-A-2 is always illegal.
 
 A meld may contain more than one wild, including all-wild cards, provided the
 creating player declares one complete legal set or run interpretation. That
@@ -416,11 +416,11 @@ contains 23, discard contains 1, and seat 3 (left/clockwise from seat 2) is in
 In hand 6, every printed Six is wild and is worth 50 if left in hand. In hand
 7, Sixes return to natural cards worth 6 and every printed Seven becomes wild.
 
-### C. Legal and illegal run under confirmed Ace-low rule
+### C. Legal and illegal runs under confirmed Ace-high-or-low, no-wrap rule
 
-A♣-2♣-3♣ is a legal natural run. Q♣-K♣-A♣ and K♣-A♣-2♣ are illegal. In the
-Queens hand, Q♣ may represent 6♥ in the public run 4♥-5♥-[Q♣ as 6♥], and that
-represented position is visible to all players.
+A♣-2♣-3♣ and Q♣-K♣-A♣ are legal natural runs. K♣-A♣-2♣ is illegal because a
+run cannot wrap. In the Queens hand, Q♣ may represent 6♥ in the public run
+4♥-5♥-[Q♣ as 6♥], and that represented position is visible to all players.
 
 ### D. Opening gate
 

@@ -12,7 +12,7 @@
   seeded shuffles, exact committed-deck evidence, clockwise deals, and
   evidence-derived unbiased initial-dealer selection.
 - Complete set/run validation for natural, wild-assisted, and all-wild melds;
-  Ace-low/no-wrap runs; immutable represented wild slots; end lay-offs; and
+  Ace-high-or-low/no-wrap runs; immutable represented wild slots; end lay-offs; and
   transactional wild replacement.
 - Revisioned lobby and gameplay commands covering seats/readiness, start,
   dealer opening discard, both draw sources, opening melds, lay-offs, wild

@@ -67,6 +67,7 @@ export {
 export {
   inferMeldType,
   legalMeldInterpretations,
+  legalRunExtensionRanks,
   validateLayoff,
   validateMeld,
   validateMeldExtension,

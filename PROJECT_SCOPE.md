@@ -81,7 +81,8 @@ and forced-relay revalidation remains a release gate.
   only by discarding one card: no draw and no meld on that opening turn.
 - A set contains three or four cards of one rank.
 - A run contains three or more consecutive cards of one suit.
-- Aces are low in natural runs: `A-2-3` is valid; `Q-K-A` and `K-A-2` are not.
+- Aces are low or high in natural runs: `A-2-3` and `Q-K-A` are valid; runs
+  never wrap, so `K-A-2` is not.
 - After the opening discard, a normal turn is draw, optional table play, then
   one final discard.
 - A player's first table play must include a complete valid new set or run.

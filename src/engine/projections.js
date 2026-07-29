@@ -8,6 +8,7 @@ const PUBLIC_RULE_KEYS = Object.freeze([
   "handCount",
   "clockwise",
   "aceLowRuns",
+  "aceHighRuns",
   "wildsAllowedInOpeningMeld",
   "reclaimedWildMayBeHeld",
   "stockExhaustionEndsAfterTurn",

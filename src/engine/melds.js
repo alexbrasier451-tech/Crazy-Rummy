@@ -1,6 +1,7 @@
 import { MELD_TYPE, RANKS, REJECTION, SUITS } from "./constants.js";
 
 const RANK_INDEX = new Map(RANKS.map((rank, index) => [rank, index]));
+const RUN_RANK_SEQUENCE = Object.freeze([...RANKS, "A"]);
 const SUIT_SET = new Set(SUITS);
 const START_PLACEMENTS = new Set(["START", "start", "BEFORE", "before"]);
 const END_PLACEMENTS = new Set(["END", "end", "AFTER", "after"]);
@@ -52,6 +53,23 @@ function permutations(values) {
     permutations(values.filter((_, candidateIndex) => candidateIndex !== index))
       .map((tail) => [value, ...tail])
   ));
+}
+
+function legalRunWindows(length) {
+  if (!Number.isInteger(length) || length < 3 || length > RANKS.length) return [];
+  const windows = [];
+  for (let start = 0; start <= RUN_RANK_SEQUENCE.length - length; start += 1) {
+    const window = RUN_RANK_SEQUENCE.slice(start, start + length);
+    if (new Set(window).size === window.length) windows.push(window);
+  }
+  return windows;
+}
+
+function matchingRunWindow(ranks) {
+  const representedRanks = new Set(ranks);
+  return legalRunWindows(ranks.length).find((window) => (
+    window.every((rank) => representedRanks.has(rank))
+  )) ?? null;
 }
 
 function hasExactRepresentation(represented, expected) {
@@ -203,14 +221,12 @@ function validateRun(meld, wildRank) {
     slots.push(validated.slot);
   }
 
+  const window = matchingRunWindow(slots.map((slot) => slot.represented.rank));
+  if (!window) return rejected("RUN_NOT_CONSECUTIVE");
+  const runPosition = new Map(window.map((rank, index) => [rank, index]));
   slots.sort((first, second) => (
-    RANK_INDEX.get(first.represented.rank) - RANK_INDEX.get(second.represented.rank)
+    runPosition.get(first.represented.rank) - runPosition.get(second.represented.rank)
   ));
-  for (let index = 1; index < slots.length; index += 1) {
-    const previous = RANK_INDEX.get(slots[index - 1].represented.rank);
-    const current = RANK_INDEX.get(slots[index].represented.rank);
-    if (current !== previous + 1) return rejected("RUN_NOT_CONSECUTIVE");
-  }
 
   return {
     ok: true,
@@ -331,8 +347,7 @@ export function legalMeldInterpretations(meld, { wildRank } = {}) {
     const runSuit = naturals[0].card.suit;
     if (naturals.every(({ card }) => card.suit === runSuit)) {
       const naturalRanks = new Set(naturals.map(({ card }) => card.rank));
-      for (let start = 0; start <= RANKS.length - slots.length; start += 1) {
-        const window = RANKS.slice(start, start + slots.length);
+      for (const window of legalRunWindows(slots.length)) {
         if (!naturals.every(({ card }) => window.includes(card.rank))) continue;
         const missingRanks = window.filter((rank) => !naturalRanks.has(rank));
         if (missingRanks.length !== wilds.length) continue;
@@ -372,6 +387,39 @@ function normalisePlacement(placement) {
 }
 
 /**
+ * Returns the ordered ranks which can legally extend one declared end of a
+ * canonical run. The shared run sequence allows Ace low or high but has no
+ * second rank after its high-A endpoint, so K-A-2 can never wrap.
+ */
+export function legalRunExtensionRanks(meld, { wildRank, placement, count = 1 } = {}) {
+  const current = validateMeld(meld, { wildRank });
+  const side = normalisePlacement(placement);
+  if (!current.ok || current.meld.type !== MELD_TYPE.RUN || !side
+    || !Number.isInteger(count) || count < 1) {
+    return Object.freeze([]);
+  }
+
+  const currentRanks = current.meld.slots.map((slot) => slot.represented.rank);
+  const totalLength = currentRanks.length + count;
+  const seen = new Set();
+  const extensions = [];
+  for (const window of legalRunWindows(totalLength)) {
+    const retained = side === "START"
+      ? window.slice(count)
+      : window.slice(0, currentRanks.length);
+    if (!retained.every((rank, index) => rank === currentRanks[index])) continue;
+    const added = side === "START"
+      ? window.slice(0, count)
+      : window.slice(currentRanks.length);
+    const key = added.join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    extensions.push(Object.freeze(added));
+  }
+  return Object.freeze(extensions);
+}
+
+/**
  * Validates an atomic lay-off. A run can only be extended at one declared end;
  * a set can grow only to four cards. Existing slots are retained unchanged.
  */
@@ -399,16 +447,16 @@ export function validateLayoff(meld, addedSlots, { wildRank, placement } = {}) {
   if (!result.ok) return result;
 
   if (canonical.type === MELD_TYPE.RUN) {
-    const previousRanks = canonical.slots.map((slot) => RANK_INDEX.get(slot.represented.rank));
-    const addedRanks = result.meld.slots
-      .filter((slot) => !canonical.slots.some((currentSlot) => currentSlot.slotId === slot.slotId))
-      .map((slot) => RANK_INDEX.get(slot.represented.rank));
+    const previousSlotIds = new Set(canonical.slots.map((slot) => slot.slotId));
+    const previousPositions = [];
+    const addedPositions = [];
+    result.meld.slots.forEach((slot, index) => {
+      (previousSlotIds.has(slot.slotId) ? previousPositions : addedPositions).push(index);
+    });
     const side = normalisePlacement(placement);
-    const min = Math.min(...previousRanks);
-    const max = Math.max(...previousRanks);
     const legalEnd = side === "START"
-      ? addedRanks.every((rank) => rank < min)
-      : addedRanks.every((rank) => rank > max);
+      ? Math.max(...addedPositions) < Math.min(...previousPositions)
+      : Math.min(...addedPositions) > Math.max(...previousPositions);
     if (!legalEnd) return rejected("RUN_EXTENSION_MUST_USE_END");
   }
   return result;

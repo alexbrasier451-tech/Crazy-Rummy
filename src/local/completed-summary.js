@@ -33,6 +33,7 @@ function copyRules(rules) {
     rulesVersion: rules.rulesVersion,
     handCount: rules.handCount,
     ...(typeof rules.aceLowRuns === "boolean" ? { aceLowRuns: rules.aceLowRuns } : {}),
+    ...(typeof rules.aceHighRuns === "boolean" ? { aceHighRuns: rules.aceHighRuns } : {}),
     ...(typeof rules.wildsAllowedInOpeningMeld === "boolean" ? { wildsAllowedInOpeningMeld: rules.wildsAllowedInOpeningMeld } : {}),
     ...(typeof rules.reclaimedWildMayBeHeld === "boolean" ? { reclaimedWildMayBeHeld: rules.reclaimedWildMayBeHeld } : {}),
     ...(typeof rules.stockExhaustionEndsAfterTurn === "boolean" ? { stockExhaustionEndsAfterTurn: rules.stockExhaustionEndsAfterTurn } : {}),

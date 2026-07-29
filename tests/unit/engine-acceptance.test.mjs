@@ -229,13 +229,13 @@ test("a complete committed deck is an alternative to a shuffle seed at game star
   assert.equal(result.accepted, true, result.detail ?? result.reason);
 });
 
-test("acceptance B, C, E, and F: moving wilds, Ace-low runs, opening wilds, and reclaimed wilds", () => {
+test("acceptance B, C, E, and F: moving wilds, Ace-low-or-high runs, opening wilds, and reclaimed wilds", () => {
   assert.equal(scoreCard("clubs:6", "6"), 50);
   assert.equal(scoreCard("clubs:6", "7"), 6);
   assert.equal(scoreCard("clubs:7", "7"), 50);
 
   assert.equal(validateMeld(meld("ace-low", "RUN", ["clubs:A", "clubs:2", "clubs:3"]), { wildRank: "4" }).ok, true);
-  assert.equal(validateMeld(meld("queen-high", "RUN", ["clubs:Q", "clubs:K", "clubs:A"]), { wildRank: "4" }).ok, false);
+  assert.equal(validateMeld(meld("queen-high", "RUN", ["clubs:Q", "clubs:K", "clubs:A"]), { wildRank: "4" }).ok, true);
   assert.equal(validateMeld(meld("wrap", "RUN", ["clubs:K", "clubs:A", "clubs:2"]), { wildRank: "4" }).ok, false);
 
   const openingWithWild = validateMeld({

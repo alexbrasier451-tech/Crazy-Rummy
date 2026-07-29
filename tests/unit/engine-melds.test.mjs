@@ -5,6 +5,7 @@ import { MELD_TYPE, REJECTION } from "../../src/engine/constants.js";
 import {
   inferMeldType,
   legalMeldInterpretations,
+  legalRunExtensionRanks,
   validateLayoff,
   validateMeld,
   validateWildReplacement
@@ -52,7 +53,7 @@ test("requires declared interpretations for all-wild melds and rejects invalid s
   ]), { wildRank: "4" }).detail, "SET_TOO_LARGE");
 });
 
-test("orders valid runs by their declared positions and permits Ace only low", () => {
+test("orders valid runs with Ace low or high without allowing rank wraparound", () => {
   const run = validateMeld(meld(MELD_TYPE.RUN, [
     slot("three", "hearts:3"),
     slot("wild", "clubs:4", { suit: "hearts", rank: "2" }),
@@ -62,11 +63,20 @@ test("orders valid runs by their declared positions and permits Ace only low", (
   assert.deepEqual(run.meld.slots.map(({ slotId }) => slotId), ["ace", "wild", "three"]);
 
   const invalidWrap = validateMeld(meld(MELD_TYPE.RUN, [
-    slot("queen", "clubs:Q"), slot("king", "clubs:K"), slot("ace", "clubs:A")
+    slot("king", "clubs:K"), slot("ace", "clubs:A"), slot("two", "clubs:2")
   ]), { wildRank: "4" });
   assert.equal(invalidWrap.ok, false);
   assert.equal(invalidWrap.reason, REJECTION.INVALID_MELD);
   assert.equal(invalidWrap.detail, "RUN_NOT_CONSECUTIVE");
+
+  const aceHigh = validateMeld(meld(MELD_TYPE.RUN, [
+    slot("ace", "clubs:A"), slot("queen", "clubs:Q"), slot("king", "clubs:K")
+  ]), { wildRank: "4" });
+  assert.equal(aceHigh.ok, true);
+  assert.deepEqual(
+    aceHigh.meld.slots.map(({ represented }) => represented.rank),
+    ["Q", "K", "A"]
+  );
 });
 
 test("rejects ambiguous or duplicate run positions", () => {
@@ -169,8 +179,23 @@ test("meld composition derives only legal wild meanings from the selected cards"
     aceLowInterpretations.map(({ meld: candidate }) => (
       candidate.slots.find(({ cardId }) => cardId === "diamonds:4").represented
     )),
-    [{ rank: "3", suit: "clubs" }],
-    "Ace must stay low instead of creating a Q-K-A wraparound option"
+    [{ rank: "3", suit: "clubs" }]
+  );
+
+  const aceHighInterpretations = legalMeldInterpretations(meld(undefined, [
+    slot("queen", "clubs:Q"),
+    slot("king", "clubs:K"),
+    slot("wild", "clubs:A")
+  ]), { wildRank: "A" });
+  assert.deepEqual(
+    aceHighInterpretations.map(({ meld: candidate }) => (
+      candidate.slots.find(({ cardId }) => cardId === "clubs:A").represented
+    )),
+    [
+      { rank: "J", suit: "clubs" },
+      { rank: "A", suit: "clubs" }
+    ],
+    "the wild Ace can complete J-Q-K or occupy the high-A position in Q-K-A"
   );
 
   assert.deepEqual(legalMeldInterpretations(meld(undefined, [
@@ -196,6 +221,41 @@ test("allows only set growth or contiguous run end extensions", () => {
   assert.equal(validateLayoff(baseRun, [slot("three", "hearts:3")], {
     wildRank: "8", placement: "END"
   }).detail, "RUN_EXTENSION_MUST_USE_END");
+
+  const highRun = meld(MELD_TYPE.RUN, [
+    slot("jack", "hearts:J"), slot("queen", "hearts:Q"), slot("king", "hearts:K")
+  ]);
+  assert.deepEqual(
+    legalRunExtensionRanks(highRun, { wildRank: "8", placement: "END", count: 1 }),
+    [["A"]],
+    "the UI-facing extension helper must offer Ace at the high end"
+  );
+  const highAce = validateLayoff(highRun, [slot("ace", "hearts:A")], {
+    wildRank: "8", placement: "END"
+  });
+  assert.equal(highAce.ok, true);
+  assert.deepEqual(
+    highAce.meld.slots.map(({ represented }) => represented.rank),
+    ["J", "Q", "K", "A"]
+  );
+  assert.deepEqual(
+    legalRunExtensionRanks(highAce.meld, { wildRank: "8", placement: "START", count: 1 }),
+    [["10"]]
+  );
+  assert.deepEqual(
+    legalRunExtensionRanks(highAce.meld, { wildRank: "8", placement: "END", count: 1 }),
+    []
+  );
+  assert.equal(validateLayoff(highAce.meld, [slot("two", "hearts:2")], {
+    wildRank: "8", placement: "END"
+  }).detail, "RUN_NOT_CONSECUTIVE");
+
+  const lowRun = meld(MELD_TYPE.RUN, [
+    slot("ace", "spades:A"), slot("two", "spades:2"), slot("three", "spades:3")
+  ]);
+  assert.equal(validateLayoff(lowRun, [slot("king", "spades:K")], {
+    wildRank: "8", placement: "START"
+  }).detail, "RUN_NOT_CONSECUTIVE");
 
   const baseSet = meld(MELD_TYPE.SET, [
     slot("clubs", "clubs:8"), slot("diamonds", "diamonds:8"), slot("hearts", "hearts:8")
