@@ -1,0 +1,1 @@
+window.CRAZY_RUMMY_METERED_KEY = "pk_live_2aff389ff1327c7e12573d12fc1dbd086b3ef1c4";
