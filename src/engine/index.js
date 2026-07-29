@@ -65,6 +65,7 @@ export {
 } from "./invariants.js";
 
 export {
+  inferMeldType,
   validateLayoff,
   validateMeld,
   validateMeldExtension,

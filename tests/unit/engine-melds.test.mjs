@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { MELD_TYPE, REJECTION } from "../../src/engine/constants.js";
 import {
+  inferMeldType,
   validateLayoff,
   validateMeld,
   validateWildReplacement
@@ -77,6 +78,45 @@ test("rejects ambiguous or duplicate run positions", () => {
   assert.equal(validateMeld(meld(MELD_TYPE.RUN, [
     slot("a", "clubs:4"), slot("b", "diamonds:4", { suit: "hearts", rank: "5" }), slot("c", "hearts:6")
   ]), { wildRank: "4" }).detail, "WILD_REPRESENTATION_REQUIRED");
+});
+
+test("infers a complete meld as a set or run without a caller-supplied type", () => {
+  const set = inferMeldType(meld(undefined, [
+    slot("clubs", "clubs:8"),
+    slot("diamonds", "diamonds:8"),
+    slot("wild", "spades:4", { rank: "8" })
+  ]), { wildRank: "4" });
+  assert.equal(set.ok, true);
+  assert.equal(set.type, MELD_TYPE.SET);
+  assert.equal(set.meld.rank, "8");
+
+  const run = inferMeldType(meld(undefined, [
+    slot("five", "hearts:5"),
+    slot("wild", "clubs:4", { rank: "6", suit: "hearts" }),
+    slot("seven", "hearts:7")
+  ]), { wildRank: "4" });
+  assert.equal(run.ok, true);
+  assert.equal(run.type, MELD_TYPE.RUN);
+  assert.equal(run.meld.suit, "hearts");
+  assert.deepEqual(run.meld.slots.map((entry) => entry.represented.rank), ["5", "6", "7"]);
+});
+
+test("meld inference waits for required wild meaning and rejects non-meld selections", () => {
+  const incompleteWild = inferMeldType(meld(undefined, [
+    slot("clubs", "clubs:8"),
+    slot("diamonds", "diamonds:8"),
+    slot("wild", "spades:4")
+  ]), { wildRank: "4" });
+  assert.equal(incompleteWild.ok, false);
+  assert.equal(incompleteWild.detail, "MELD_DETAILS_REQUIRED");
+
+  const invalid = inferMeldType(meld(undefined, [
+    slot("one", "clubs:3"),
+    slot("two", "diamonds:8"),
+    slot("three", "hearts:K")
+  ]), { wildRank: "4" });
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.detail, "MELD_TYPE_NOT_INFERRED");
 });
 
 test("allows only set growth or contiguous run end extensions", () => {

@@ -11,11 +11,12 @@ import {
   scoreStrip
 } from "../components/index.js";
 import { normalizePreferences } from "../app/preferences.js";
+import { inferMeldType } from "../engine/index.js";
 import {
   RANKS,
   SUITS,
   buildLayoffSlots,
-  buildMeld,
+  buildMeldCandidate,
   cardDisplayName,
   cardParts,
   phaseCopy,
@@ -100,6 +101,29 @@ function validateRepresentations(cardIds, wildRank, representations, type) {
   return null;
 }
 
+function meldInferenceProblem(cardIds, wildRank, representations, inference) {
+  if (cardIds.length < 3) return "Select at least three cards to make a meld.";
+
+  const wildCards = cardIds.filter((cardId) => cardParts(cardId)?.rank === wildRank);
+  const missingRank = wildCards.find((cardId) => !representations[cardId]?.rank);
+  if (missingRank) {
+    return `Choose the represented rank for ${cardDisplayName(missingRank)}.`;
+  }
+
+  if (inference.ok) return validateRepresentations(
+    cardIds,
+    wildRank,
+    representations,
+    inference.type
+  );
+
+  const missingSuit = wildCards.find((cardId) => !representations[cardId]?.suit);
+  if (missingSuit) {
+    return `If these cards form a run, choose the represented suit for ${cardDisplayName(missingSuit)}.`;
+  }
+  return "Those cards do not form one complete legal set or run.";
+}
+
 function stateSnapshot(session) {
   const snapshot = session?.getSnapshot?.();
   return snapshot && typeof snapshot === "object" ? snapshot : {};
@@ -167,7 +191,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     selected: new Set(),
     sort: initialPreferences.handSort,
     sheet: null,
-    composer: { type: "RUN", order: [], representations: {} },
+    composer: { order: [], representations: {} },
     layoff: { meldId: null, placement: "END", representations: {} },
     replace: { meldId: null, wildCardId: null },
     discardConfirm: false,
@@ -487,56 +511,81 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
   function composerSheet(view, hand, localSeatId, cards) {
     const chosen = ui.composer.order.length ? ui.composer.order : selectedOrAnnounce(cards);
     if (!chosen) return null;
-    const type = ui.composer.type;
-    const representationProblem = validateRepresentations(chosen, hand.wildRank, ui.composer.representations, type);
-    const orderedCards = element("div", { className: "meld-group", "aria-label": "Cards in this meld" },
-      chosen.map((cardId, index) => element("div", { className: "game-composer-card" },
-        cardNode(cardId, { wildRank: hand.wildRank, interactive: false }),
-        element("div", { className: "game-inline-actions" },
-          commandButton("Move left", () => {
-            if (index > 0) [ui.composer.order[index - 1], ui.composer.order[index]] = [ui.composer.order[index], ui.composer.order[index - 1]];
-            render();
-          }, { variant: "quiet", disabled: index === 0, name: "meld-move-left" }),
-          commandButton("Move right", () => {
-            if (index < ui.composer.order.length - 1) [ui.composer.order[index + 1], ui.composer.order[index]] = [ui.composer.order[index], ui.composer.order[index + 1]];
-            render();
-          }, { variant: "quiet", disabled: index === ui.composer.order.length - 1, name: "meld-move-right" })
-        )
-      )));
-    return gameSheet("Compose meld", "Choose a meld type and explicitly assign every wild card.", [
+    const preview = buildMeldCandidate({
+      id: "meld-preview",
+      cardIds: chosen,
+      actorSeatId: localSeatId,
+      wildRank: hand.wildRank,
+      representations: ui.composer.representations
+    });
+    const inference = inferMeldType(preview, { wildRank: hand.wildRank });
+    const type = inference.ok ? inference.type : null;
+    const representationProblem = meldInferenceProblem(
+      chosen,
+      hand.wildRank,
+      ui.composer.representations,
+      inference
+    );
+    const displayOrder = inference.ok
+      ? inference.meld.slots.map((slot) => slot.cardId)
+      : chosen;
+    const orderedCards = element(
+      "div",
+      { className: "meld-group", "aria-label": "Cards in this meld" },
+      displayOrder.map((cardId) => cardNode(cardId, {
+        wildRank: hand.wildRank,
+        interactive: false
+      }))
+    );
+    return gameSheet("Compose meld", "The game detects a set or run from the selected cards. Explicitly assign every wild card.", [
       orderedCards,
-      element("fieldset", { className: "game-choice" },
-        element("legend", { text: "Meld type" }),
-        choice("Run", type === "RUN", () => { ui.composer.type = "RUN"; render(); }),
-        choice("Set", type === "SET", () => { ui.composer.type = "SET"; render(); })
-      ),
+      type
+        ? element("p", {
+          className: "game-meld-detected",
+          role: "status",
+          text: `${type === "RUN" ? "Run" : "Set"} detected`
+        })
+        : copy("Meld type will appear when the selected cards and wild identities form one legal meld."),
       ...selectedWildCards(chosen, hand.wildRank).map((cardId) => representationFields({
         cardId,
-        type,
+        type: type ?? "RUN",
         value: representationFor(cardId, ui.composer.representations),
         onChange: (next) => { ui.composer.representations[cardId] = next; render(); }
       })),
       representationProblem ? element("p", { className: "game-inline-error", text: representationProblem }) : copy("Selection is staged locally. It is not on the shared table until accepted."),
       stack(
         commandButton("Place meld", () => {
-          const issue = validateRepresentations(chosen, hand.wildRank, ui.composer.representations, type);
-          if (issue) { announce(issue); render(); return; }
-          const meld = buildMeld({
+          const candidate = buildMeldCandidate({
             id: `meld-${Date.now()}`,
-            type,
             cardIds: chosen,
             actorSeatId: localSeatId,
             wildRank: hand.wildRank,
             representations: ui.composer.representations
           });
-          execute("CREATE_MELD", { meld }, {
+          const detected = inferMeldType(candidate, { wildRank: hand.wildRank });
+          const issue = meldInferenceProblem(
+            chosen,
+            hand.wildRank,
+            ui.composer.representations,
+            detected
+          );
+          if (issue || !detected.ok) {
+            announce(issue ?? "Those cards do not form one complete legal set or run.");
+            render();
+            return;
+          }
+          execute("CREATE_MELD", { meld: detected.meld }, {
             onAccepted: () => {
               ui.sheet = null;
               ui.selected.clear();
-              ui.composer = { type: "RUN", order: [], representations: {} };
+              ui.composer = { order: [], representations: {} };
             }
           });
-        }, { variant: "primary", disabled: Boolean(representationProblem) || gameplayIsBlocked(), name: "place-meld" }),
+        }, {
+          variant: "primary",
+          disabled: Boolean(representationProblem) || !inference.ok || gameplayIsBlocked(),
+          name: "place-meld"
+        }),
         commandButton("Cancel composition", closeSheet, { variant: "quiet", name: "cancel-meld" })
       )
     ]);
@@ -697,7 +746,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
         commandButton("Make a meld", () => {
           const chosen = selectedOrAnnounce(cards);
           if (!chosen) return;
-          ui.composer = { type: "RUN", order: chosen, representations: {} };
+          ui.composer = { order: chosen, representations: {} };
           openActionSubsheet("compose");
         }, { variant: "primary", disabled: gameplayIsBlocked() || selectedCount < 1, name: "open-meld" }),
         commandButton("Add to table", () => {

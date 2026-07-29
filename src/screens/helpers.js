@@ -7,10 +7,15 @@ import {
 
 export function element(tagName, options = {}, ...children) {
   const node = document.createElement(tagName);
+  let deferredValue;
+  let hasDeferredValue = false;
 
   for (const [key, value] of Object.entries(options)) {
     if (value == null) continue;
-    if (key === "className") {
+    if (key === "value") {
+      deferredValue = value;
+      hasDeferredValue = true;
+    } else if (key === "className") {
       node.className = value;
     } else if (key === "text") {
       node.textContent = value;
@@ -30,6 +35,7 @@ export function element(tagName, options = {}, ...children) {
     node.append(child instanceof Node ? child : document.createTextNode(String(child)));
   }
 
+  if (hasDeferredValue) node.value = deferredValue;
   return node;
 }
 

@@ -257,23 +257,25 @@ try {
 
   await chooseCards(page, ["diamonds:10"]);
   await takeAction(page, "open-meld");
-  await page.getByRole("radio", { name: "Set" }).check();
-  await control(page, "place-meld").click();
-  assert.match(
-    await page.getByRole("status").filter({ hasText: "That meld is not legal." }).innerText(),
-    /That meld is not legal\. Check its cards and wild identity\./
-  );
+  await page.getByText("Select at least three cards to make a meld.").waitFor();
+  assert.equal(await control(page, "place-meld").isDisabled(), true,
+    "an incomplete selection must not invent a meld type");
   assert.equal(await page.locator('[data-game-sheet="compose-meld"]').count(), 1,
-    "a rejected meld must preserve the composer");
+    "an incomplete meld must preserve the composer");
   assert.equal(await page.locator('[data-private-hand] [data-card-id="diamonds:10"]').getAttribute("aria-pressed"), "true",
-    "a rejected meld must preserve card selection");
+    "an incomplete meld must preserve card selection");
   await control(page, "cancel-meld").click();
   await clearSelection(page);
 
   await chooseCards(page, ["diamonds:10", "clubs:10", "clubs:A"]);
   await takeAction(page, "open-meld");
-  await page.getByRole("radio", { name: "Set" }).check();
-  await page.getByLabel("Wild represents rank for Ace of clubs").selectOption("10");
+  assert.equal(await page.getByRole("radio", { name: "Set" }).count(), 0,
+    "the composer must not ask the player to choose a meld type");
+  const wildRankChoice = page.getByLabel("Wild represents rank for Ace of clubs");
+  await wildRankChoice.selectOption("10");
+  assert.equal(await wildRankChoice.inputValue(), "10",
+    "a detected meld must keep the visible wild representation in sync after rerender");
+  await page.getByText("Set detected").waitFor();
   await expectOneAcceptedRevision(page, () => control(page, "place-meld").click(), "opening set");
   assert.match(await page.getByLabel("Shared table melds").innerText(), /set/i);
   assert.equal(await page.locator("button article").count(), 0,

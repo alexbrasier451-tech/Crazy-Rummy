@@ -235,6 +235,39 @@ export function validateMeld(meld, { wildRank } = {}) {
     : validateRun(meld, wildRank);
 }
 
+/**
+ * Uses the same authoritative validation rules as CREATE_MELD to identify an
+ * untyped complete meld. Exactly one legal interpretation must exist.
+ */
+export function inferMeldType(meld, { wildRank } = {}) {
+  if (!isRecord(meld) || !Array.isArray(meld.slots) || !RANK_INDEX.has(wildRank)) {
+    return rejected("INVALID_MELD_INPUT");
+  }
+
+  const candidates = [MELD_TYPE.SET, MELD_TYPE.RUN]
+    .map((type) => ({
+      type,
+      result: validateMeld({ ...meld, type }, { wildRank })
+    }));
+  const valid = candidates.filter(({ result }) => result.ok);
+
+  if (valid.length === 1) {
+    return {
+      ok: true,
+      type: valid[0].type,
+      meld: valid[0].result.meld
+    };
+  }
+  if (valid.length > 1) return rejected("AMBIGUOUS_MELD_TYPE");
+
+  const needsWildMeaning = candidates.some(({ result }) => (
+    result.detail === "WILD_REPRESENTATION_REQUIRED"
+    || result.detail === "SET_RANK_REQUIRED"
+    || result.detail === "RUN_SUIT_REQUIRED"
+  ));
+  return rejected(needsWildMeaning ? "MELD_DETAILS_REQUIRED" : "MELD_TYPE_NOT_INFERRED");
+}
+
 function normalisePlacement(placement) {
   if (START_PLACEMENTS.has(placement)) return "START";
   if (END_PLACEMENTS.has(placement)) return "END";

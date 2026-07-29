@@ -967,20 +967,19 @@
   font-weight: 750;
 }
 
-.game-composer-card {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.game-inline-actions {
-  display: flex;
-  gap: var(--space-1);
-}
-
-.game-inline-actions .action {
-  min-height: var(--tap-min);
-  padding-inline: 0.5rem;
-  font-size: var(--text-xs);
+.game-meld-detected {
+  width: fit-content;
+  margin: 0;
+  border: 1px solid rgb(226 181 66 / 0.48);
+  border-radius: 999px;
+  padding: 0.42rem 0.78rem;
+  color: var(--color-cream);
+  background:
+    linear-gradient(135deg, rgb(226 181 66 / 0.18), rgb(226 181 66 / 0.05)),
+    var(--color-deep-panel);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  font-weight: 800;
+  letter-spacing: 0.025em;
 }
 
 .game-inline-error,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildMeldCandidate,
   buildLayoffSlots,
   buildMeld,
   cardParts,
@@ -46,6 +47,28 @@ test("meld construction keeps an explicit wild representation and a stable slot 
     slotId: "meld-7:2",
     cardId: "clubs:4",
     represented: { rank: "4", suit: "hearts" }
+  });
+});
+
+test("meld candidates preserve selection meaning without inventing a type", () => {
+  assert.deepEqual(buildMeldCandidate({
+    id: "meld-auto",
+    actorSeatId: "alex",
+    wildRank: "4",
+    cardIds: ["hearts:3", "clubs:4", "hearts:5"],
+    representations: { "clubs:4": { rank: "4", suit: "hearts" } }
+  }), {
+    id: "meld-auto",
+    originatingSeatId: "alex",
+    slots: [
+      { slotId: "meld-auto:1", cardId: "hearts:3" },
+      {
+        slotId: "meld-auto:2",
+        cardId: "clubs:4",
+        represented: { rank: "4", suit: "hearts" }
+      },
+      { slotId: "meld-auto:3", cardId: "hearts:5" }
+    ]
   });
 });
 

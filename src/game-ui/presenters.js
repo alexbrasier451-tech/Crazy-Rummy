@@ -84,7 +84,7 @@ export function rejectionCopy(reason, detail) {
   return detail ? `${base} ${String(detail).replaceAll("_", " ").toLowerCase()}.` : base;
 }
 
-export function buildMeld({ id, type, cardIds, actorSeatId, wildRank, representations = {} }) {
+export function buildMeldCandidate({ id, cardIds, actorSeatId, wildRank, representations = {} }) {
   const cards = Array.isArray(cardIds) ? cardIds : [];
   const slots = cards.map((cardId, index) => {
     const card = cardParts(cardId);
@@ -95,12 +95,19 @@ export function buildMeld({ id, type, cardIds, actorSeatId, wildRank, representa
       ...(represented ? { represented } : {})
     };
   });
-  const meld = { id, type, originatingSeatId: actorSeatId, slots };
+  return { id, originatingSeatId: actorSeatId, slots };
+}
+
+export function buildMeld({ id, type, cardIds, actorSeatId, wildRank, representations = {} }) {
+  const meld = {
+    ...buildMeldCandidate({ id, cardIds, actorSeatId, wildRank, representations }),
+    type
+  };
   if (type === "SET") {
-    const natural = slots.map((slot) => cardParts(slot.cardId)).find((card) => card?.rank !== wildRank);
+    const natural = meld.slots.map((slot) => cardParts(slot.cardId)).find((card) => card?.rank !== wildRank);
     if (natural) meld.rank = natural.rank;
   } else {
-    const natural = slots.map((slot) => cardParts(slot.cardId)).find((card) => card?.rank !== wildRank);
+    const natural = meld.slots.map((slot) => cardParts(slot.cardId)).find((card) => card?.rank !== wildRank);
     if (natural) meld.suit = natural.suit;
   }
   return meld;
