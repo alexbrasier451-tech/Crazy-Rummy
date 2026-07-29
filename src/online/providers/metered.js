@@ -260,16 +260,9 @@ export function createMeteredRealtimeRequestClient({
     // A table creator is its own authority. Process its create/renew requests
     // locally rather than waiting for Metered to echo a publish back to sender.
     if (hostHandler && shouldHandleLocally(envelope)) {
-      try {
-        const value = await hostHandler(envelope, { fromPeerId: null, installationId });
-        await subscribeResultScope(value);
-        return { ok: true, value };
-      } catch (error) {
-        // A guest can carry an empty local authority. Only an explicit local
-        // owner is allowed to fail locally; unknown tables still route to the
-        // remote host control channel.
-        if (error?.code !== "NOT_FOUND") throw error;
-      }
+      const value = await hostHandler(envelope, { fromPeerId: null, installationId });
+      await subscribeResultScope(value);
+      return { ok: true, value };
     }
     return new Promise(async (resolve, reject) => {
       const timer = setTimeout(() => {

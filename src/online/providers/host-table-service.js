@@ -206,7 +206,8 @@ export function createMeteredHostTableService({
   function getMatchBootstrap(envelope, context) {
     const table = tableForMutation(envelope);
     const playerId = requireId(envelope.payload.playerId);
-    if (table.status !== "STARTED" || !table.seats.some((seat) => seat.playerId === playerId)) throw new MeteredProviderError("FORBIDDEN", "Match bootstrap is unavailable.");
+    if (table.status !== "STARTED") throw new MeteredProviderError("NOT_FOUND", "The match has not started.");
+    if (!table.seats.some((seat) => seat.playerId === playerId)) throw new MeteredProviderError("FORBIDDEN", "Match bootstrap is unavailable.");
     // The realtime bridge sends this response directly to the requesting peer.
     if (context.fromPeerId === null && playerId !== table.hostPlayerId) throw new MeteredProviderError("FORBIDDEN", "Bootstrap requires the seated peer route.");
     return { table: projection(table, { room: true }), bootstrap: bootstrapFor(table, playerId) };

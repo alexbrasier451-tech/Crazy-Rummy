@@ -156,6 +156,12 @@ test("Closed invites stay off discovery and route lookup and join through the ha
   const created = await host.createTable({
     host: { playerId: "host_closed", displayName: "Host" }, visibility: "CLOSED", capacity: 3, protocolVersion: "v1", rulesVersion: "r1",
   });
+  await assert.rejects(
+    host.getMatchBootstrap({
+      tableId: created.table.tableId, playerId: "host_closed", protocolVersion: "v1", rulesVersion: "r1",
+    }),
+    { code: "NOT_FOUND" },
+  );
   assert.equal(FakeSignallingClient.instances[0].published.some((entry) => entry.data.type === "crazy-rummy/table-advertisement"), false);
   assert.deepEqual(await guest.listTables({ protocolVersion: "v1", rulesVersion: "r1" }), { tables: [] });
   const lookedUp = await guest.lookupTable({ code: created.invite.code, protocolVersion: "v1", rulesVersion: "r1" });
