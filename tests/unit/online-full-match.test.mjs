@@ -120,6 +120,31 @@ test("a recovered peer link automatically pauses authority and rebinds the guest
   assertConverged(fixture, "automatic transport rebind");
 });
 
+test("a foregrounded guest recovers when only the host observed the interruption", async (t) => {
+  const visibility = createVisibilityHarness();
+  const fixture = createOnlineMatchFixture({ visibilityBySeat: { b: visibility } });
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  fixture.network.endpoint("player-a")._setState(PEER_STATE.DISCONNECTED, {
+    "player-b": PEER_STATE.DISCONNECTED,
+    "player-c": PEER_STATE.CONNECTED
+  });
+
+  assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.PAUSED);
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
+  assert.equal(fixture.network.endpoint("player-b").getSnapshot().state, PEER_STATE.CONNECTED);
+
+  await visibility.show();
+  fixture.network.endpoint("player-a")._setState(PEER_STATE.CONNECTED);
+  fixture.network.flush();
+
+  assert.equal(fixture.network.endpoint("player-b")._resumeCount(), 1);
+  assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.RUNNING);
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
+  assertConverged(fixture, "one-sided foreground recovery");
+});
+
 test("a thirteen-hand online match converges through delay, reorder, loss, duplication, and rebind", async (t) => {
   const fixture = createOnlineMatchFixture();
   t.after(() => fixture.dispose());
@@ -197,7 +222,7 @@ test("a thirteen-hand online match converges through delay, reorder, loss, dupli
   // time. Authority pauses, authenticates c, catches up, and resumes.
   assert.equal(fixture.hostSync.disconnectSeat("c").ok, true);
   assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.PAUSED);
-  fixture.sessions.c.reconnect();
+  await fixture.sessions.c.reconnect();
   fixture.network.flush();
   assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.RUNNING);
   assertConverged(fixture, "seat rebind");
@@ -249,3 +274,19 @@ test("a thirteen-hand online match converges through delay, reorder, loss, dupli
     "normal completion must clear the private active-match recovery record"
   );
 });
+
+function createVisibilityHarness() {
+  const listeners = new Set();
+  let visible = false;
+  return {
+    isVisible: () => visible,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    async show() {
+      visible = true;
+      await Promise.all([...listeners].map((listener) => listener()));
+    }
+  };
+}

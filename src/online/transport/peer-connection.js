@@ -82,7 +82,9 @@ export function createWebRtcPeerConnection({
   let iceRestartTimer = null;
   let iceRestartAttempts = 0;
   let recoveryActive = false;
+  let restartNudgePending = false;
   let unsubscribeSignals = null;
+  let unsubscribeSignallingState = null;
   let operationChain = Promise.resolve();
   const queuedCandidates = [];
   const pendingSignals = [];
@@ -129,6 +131,12 @@ export function createWebRtcPeerConnection({
         }
         operationChain = operationChain.then(() => handleSignal(envelope)).catch(fail);
       });
+      unsubscribeSignallingState = signalling.subscribe?.((snapshot) => {
+        if (closed || snapshot?.state !== PEER_STATE.CONNECTED || !restartNudgePending) return;
+        operationChain = operationChain
+          .then(() => requestRemoteRestart("signalling-restored"))
+          .catch(() => {});
+      }) ?? null;
       await signalling.start?.();
       const { iceServers } = await signalling.getIceServers({
         matchId,
@@ -149,7 +157,7 @@ export function createWebRtcPeerConnection({
         // offerer still considers connected. This authenticated nudge makes
         // the designated offerer renegotiate immediately. During ordinary
         // startup it is harmless because the offerer creates its first offer.
-        await sendSignal(SIGNAL_KIND.RESTART, { reason: "answerer-ready" }).catch(() => {});
+        await requestRemoteRestart("answerer-ready");
       }
       return getSnapshot();
     } catch (cause) {
@@ -327,13 +335,46 @@ export function createWebRtcPeerConnection({
   }
 
   function beginRecovery(cause, { force = false } = {}) {
-    if (closed || state === PEER_STATE.FAILED) return;
+    if (closed || (state === PEER_STATE.FAILED && (!force || error?.retryable !== true))) return;
     transition(PEER_STATE.DISCONNECTED, cause);
     if (!offerer) return;
     if (recoveryActive && !force) return;
     if (force) clearIceRestart();
     recoveryActive = true;
     scheduleIceRestart();
+  }
+
+  async function requestRemoteRestart(reason) {
+    if (closed || offerer) return;
+    restartNudgePending = true;
+    try {
+      await sendSignal(SIGNAL_KIND.RESTART, { reason });
+      restartNudgePending = false;
+    } catch (cause) {
+      if (!closed) {
+        transition(PEER_STATE.DISCONNECTED, new PeerTransportError(
+          "RESTART_SIGNAL_PENDING",
+          "Connection recovery is waiting for signalling.",
+          { retryable: true, cause },
+        ));
+      }
+    }
+  }
+
+  async function resume() {
+    if (closed) throw new PeerTransportError("PEER_CLOSED", "The peer connection is closed.");
+    if (!started || !connection) return getSnapshot();
+    const cause = new PeerTransportError(
+      "PEER_RESUMED",
+      "The browser returned to the active game.",
+      { retryable: true },
+    );
+    if (offerer) beginRecovery(cause, { force: true });
+    else {
+      transition(PEER_STATE.DISCONNECTED, cause);
+      await requestRemoteRestart("browser-resumed");
+    }
+    return getSnapshot();
   }
 
   async function handleSignal(envelope) {
@@ -607,6 +648,7 @@ export function createWebRtcPeerConnection({
     clearIceRestart();
     if (heartbeatTimer !== null) scheduler.clearInterval(heartbeatTimer);
     unsubscribeSignals?.();
+    unsubscribeSignallingState?.();
     channel?.close?.();
     connection?.close?.();
     state = PEER_STATE.CLOSED;
@@ -619,6 +661,7 @@ export function createWebRtcPeerConnection({
 
   return Object.freeze({
     start,
+    resume,
     send,
     close,
     getSnapshot,

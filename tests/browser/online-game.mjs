@@ -24,7 +24,11 @@ try {
   }).catch(() => {
     throw new Error(`Online game harness did not load: ${pageErrors.join(" | ")}`);
   });
-  await page.evaluate(() => globalThis.onlineGameHarness.ready);
+  await page.evaluate(() => globalThis.onlineGameHarness.ready).catch(async (error) => {
+    const topology = await page.evaluate(() => globalThis.onlineGameHarness.topologySnapshots());
+    const peers = await page.evaluate(() => globalThis.onlineGameHarness.peerSnapshots());
+    throw new Error(`${error.message}\nTopology: ${JSON.stringify(topology)}\nPeers: ${JSON.stringify(peers)}\nPage errors: ${pageErrors.join(" | ")}`);
+  });
 
   const topologies = await page.evaluate(() =>
     globalThis.onlineGameHarness.topologySnapshots()

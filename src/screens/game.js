@@ -154,42 +154,61 @@ function meldSetRank(meld, wildRank) {
     ?? null;
 }
 
-function layoffWildOptions({ meld, cardIds, wildRank, placement }) {
+function validLayoffVariants({ meld, cardIds, wildRank, placement }) {
   const wildCards = selectedWildCardIds(cardIds, wildRank);
-  if (!wildCards.length) return { byCardId: {}, problem: null };
+  const variants = [];
+  const addVariant = (representations) => {
+    const slots = buildLayoffSlots({ meld, cardIds, wildRank, representations });
+    const checked = validateLayoff(meld, slots, { wildRank, placement });
+    if (checked.ok) variants.push({ representations, slots });
+  };
+
   if (meld?.type === "SET") {
     const rank = meldSetRank(meld, wildRank);
-    return rank
-      ? { byCardId: Object.fromEntries(wildCards.map((cardId) => [cardId, { rankOptions: [rank], suitOptions: [] }])), problem: null }
-      : { byCardId: {}, problem: "The destination set has no usable represented rank." };
+    if (!rank && wildCards.length) return variants;
+    addVariant(Object.fromEntries(wildCards.map((cardId) => [cardId, { rank }])));
+    return variants;
   }
 
   const suit = meldRunSuit(meld, wildRank);
-  if (!suit) return { byCardId: {}, problem: "The destination run has no usable suit or end." };
-  const count = cardIds.length;
-  const extensions = legalRunExtensionRanks(meld, { wildRank, placement, count });
-  if (!extensions.length) {
-    return { byCardId: {}, problem: "There is not enough room at that end of the run." };
+  if (!suit) return variants;
+  for (const ranks of legalRunExtensionRanks(meld, {
+    wildRank,
+    placement,
+    count: cardIds.length
+  })) {
+    const naturalCardsMatch = cardIds.every((cardId, index) => {
+      const card = cardParts(cardId);
+      return card?.rank === wildRank || (card?.suit === suit && card?.rank === ranks[index]);
+    });
+    if (!naturalCardsMatch) continue;
+    addVariant(Object.fromEntries(cardIds.flatMap((cardId, index) => (
+      cardParts(cardId)?.rank === wildRank
+        ? [[cardId, { rank: ranks[index], suit }]]
+        : []
+    ))));
   }
-  const naturalCards = cardIds.map(cardParts).filter((card) => card?.rank !== wildRank);
-  const naturalRanks = naturalCards.map((card) => card.rank);
-  const compatibleExtensions = extensions.filter((expectedRanks) => (
-    naturalCards.every((card) => card.suit === suit && expectedRanks.includes(card.rank))
-    && new Set(naturalRanks).size === naturalRanks.length
+  return variants;
+}
+
+function validLayoffTargets(melds, cardIds, wildRank) {
+  return (melds ?? []).flatMap((meld) => {
+    const placements = meld.type === "RUN" ? ["END", "START"] : ["END"];
+    return placements.flatMap((placement) => {
+      const variants = validLayoffVariants({ meld, cardIds, wildRank, placement });
+      return variants.length ? [{ meld, placement, variants }] : [];
+    });
+  });
+}
+
+function variantsMatchingRepresentations(variants, representations, ignoredCardId) {
+  return variants.filter(({ representations: candidate }) => (
+    Object.entries(representations).every(([cardId, representation]) => (
+      cardId === ignoredCardId
+      || ((!representation?.rank || candidate[cardId]?.rank === representation.rank)
+        && (!representation?.suit || candidate[cardId]?.suit === representation.suit))
+    ))
   ));
-  if (!compatibleExtensions.length) {
-    return { byCardId: {}, problem: "Those natural cards cannot extend that end of this run." };
-  }
-  const remainingRanks = [...new Set(compatibleExtensions.flatMap((expectedRanks) => (
-    expectedRanks.filter((rank) => !naturalRanks.includes(rank))
-  )))];
-  return {
-    byCardId: Object.fromEntries(wildCards.map((cardId) => [cardId, {
-      rankOptions: remainingRanks,
-      suitOptions: [suit]
-    }])),
-    problem: null
-  };
 }
 
 function selectedWildCardIds(cardIds, wildRank) {
@@ -658,7 +677,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
         : null;
     let representationProblem = null;
     if (chosen.length < 3) {
-      representationProblem = "Select at least three cards to make a meld.";
+      representationProblem = "Select at least three cards to add a set or run.";
     } else if (!interpretations.length) {
       representationProblem = "Those cards do not form one complete legal set or run.";
     } else if (types.size > 1) {
@@ -756,7 +775,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       ...wildControls,
       representationProblem ? element("p", { className: "game-inline-error", text: representationProblem }) : copy("Selection is staged locally. It is not on the shared table until accepted."),
       stack(
-        commandButton("Place meld", () => {
+        commandButton("Add set or run", () => {
           if (!guardTablePlay(hand, localSeatId)) return;
           if (!selectedInterpretation) {
             announce(representationProblem ?? "Those cards do not form one complete legal set or run.");
@@ -797,64 +816,71 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
   function layoffSheet(view, hand, localSeatId, cards) {
     const chosen = selectedOrAnnounce(cards);
     if (!chosen) return null;
-    const meld = hand.melds.find((entry) => entry.id === ui.layoff.meldId) ?? hand.melds[0];
-    if (!meld) return gameSheet("Add to table", "There are no shared melds to add to.", [commandButton("Close", closeSheet, { variant: "quiet" })]);
+    if (!hand.melds.length) return gameSheet("Add to table", "There are no shared melds to add to.", [commandButton("Close", closeSheet, { variant: "quiet" })]);
+    const targets = validLayoffTargets(hand.melds, chosen, hand.wildRank);
+    const target = targets.find(({ meld, placement }) => (
+      meld.id === ui.layoff.meldId && placement === ui.layoff.placement
+    )) ?? targets[0] ?? null;
+    if (!target) {
+      return gameSheet("Add to table", "No valid shared-table target is available for the selected cards.", [
+        element("p", { className: "game-inline-error", text: "No valid target: these cards cannot be added to any shared meld." }),
+        commandButton("Cancel add", closeSheet, { variant: "quiet", name: "cancel-layoff" })
+      ]);
+    }
+    const { meld, placement, variants } = target;
     ui.layoff.meldId = meld.id;
-    const optionState = layoffWildOptions({
-      meld,
-      cardIds: chosen,
-      wildRank: hand.wildRank,
-      placement: ui.layoff.placement
-    });
+    ui.layoff.placement = placement;
     const representations = Object.fromEntries(selectedWildCards(chosen, hand.wildRank).map((cardId) => {
-      const options = optionState.byCardId[cardId] ?? {};
       const supplied = representationFor(cardId, ui.layoff.representations);
+      const suitOptions = [...new Set(variants.map(({ representations: candidate }) => candidate[cardId]?.suit).filter(Boolean))];
       return [cardId, {
         ...supplied,
-        ...(options.suitOptions?.length === 1 && !supplied.suit ? { suit: options.suitOptions[0] } : {})
+        ...(suitOptions.length === 1 && !supplied.suit ? { suit: suitOptions[0] } : {})
       }];
     }));
     const representationProblem = validateRepresentations(chosen, hand.wildRank, representations, meld.type);
-    const slots = buildLayoffSlots({ meld, cardIds: chosen, wildRank: hand.wildRank, representations });
-    const checked = !optionState.problem && !representationProblem
-      ? validateLayoff(meld, slots, { wildRank: hand.wildRank, placement: ui.layoff.placement })
-      : null;
-    const problem = optionState.problem
-      ?? representationProblem
-      ?? (checked?.ok ? null : "Those cards cannot be added to that meld at the selected end.");
-    return gameSheet("Add to table", "Choose a shared meld and its explicit destination.", [
-      element("label", { text: "Destination meld" }),
-      element("select", {
-        value: meld.id,
-        "aria-label": "Destination meld",
-        onChange: (event) => { ui.layoff.meldId = event.target.value; render(); }
-      }, ...hand.melds.map((entry) => element("option", { value: entry.id, text: `${entry.type.toLowerCase()} · ${entry.id}` }))),
-      meld.type === "RUN" ? element("fieldset", { className: "game-choice" },
-        element("legend", { text: "Run destination" }),
-        choice("Add before", ui.layoff.placement === "START", () => { ui.layoff.placement = "START"; render(); }),
-        choice("Add after", ui.layoff.placement === "END", () => { ui.layoff.placement = "END"; render(); })
-      ) : copy("Sets accept cards as an atomic addition up to four cards."),
+    const selectedVariant = variantsMatchingRepresentations(variants, representations)[0] ?? null;
+    const slots = selectedVariant?.slots ?? [];
+    const problem = representationProblem
+      ?? (selectedVariant ? null : "Choose legal wild representations for this target.");
+    return gameSheet("Add to table", "Choose a card preview target. Only legal shared-table placements are shown.", [
+      element("div", { className: "game-layoff-target-list", "aria-label": "Legal lay-off targets" },
+        targets.map((candidate) => element("button", {
+          type: "button",
+          className: "game-layoff-target",
+          "aria-label": `${meldSummary(candidate.meld, view)} Add the selected cards ${candidate.placement === "START" ? "before" : candidate.meld.type === "RUN" ? "after" : "to"} this ${candidate.meld.type.toLowerCase()}.`,
+          "aria-pressed": String(candidate.meld.id === meld.id && candidate.placement === placement),
+          dataset: { meldId: candidate.meld.id, placement: candidate.placement },
+          onClick: () => {
+            ui.layoff = { meldId: candidate.meld.id, placement: candidate.placement, representations: {} };
+            render();
+          }
+        },
+        element("div", { className: "game-layoff-target__preview", "aria-hidden": "true" },
+          candidate.placement === "START"
+            ? element("div", { className: "meld-group game-layoff-target__added" }, chosen.map((cardId) => meldCard({ cardId }, hand.wildRank)))
+            : null,
+          candidate.placement === "START" ? element("span", { className: "game-layoff-target__direction", text: "→" }) : null,
+          element("div", { className: "meld-group" }, candidate.meld.slots.map((slot) => meldCard(slot, hand.wildRank))),
+          candidate.placement === "END" ? element("span", { className: "game-layoff-target__direction", text: "→" }) : null,
+          candidate.placement === "END"
+            ? element("div", { className: "meld-group game-layoff-target__added" }, chosen.map((cardId) => meldCard({ cardId }, hand.wildRank)))
+            : null
+        )))
+      ),
       ...selectedWildCards(chosen, hand.wildRank).map((cardId) => {
-        const options = optionState.byCardId[cardId] ?? {};
-        const selectedElsewhere = new Set(
-          Object.entries(representations)
-            .filter(([otherCardId]) => otherCardId !== cardId)
-            .map(([, representation]) => representation.rank)
-            .filter(Boolean)
-        );
+        const compatibleVariants = variantsMatchingRepresentations(variants, representations, cardId);
         return representationFields({
           cardId,
           type: meld.type,
           value: representations[cardId],
-          rankOptions: (options.rankOptions ?? []).filter((rank) => (
-            rank === representations[cardId]?.rank || !selectedElsewhere.has(rank)
-          )),
-          suitOptions: options.suitOptions ?? [],
+          rankOptions: [...new Set(compatibleVariants.map(({ representations: candidate }) => candidate[cardId]?.rank).filter(Boolean))],
+          suitOptions: [...new Set(compatibleVariants.map(({ representations: candidate }) => candidate[cardId]?.suit).filter(Boolean))],
           labelPrefix: "Laid-off wild represents",
           onChange: (next) => { ui.layoff.representations[cardId] = next; render(); }
         });
       }),
-      problem ? element("p", { className: "game-inline-error", text: problem }) : copy(`Preview: add ${chosen.length} selected card${chosen.length === 1 ? "" : "s"} ${meld.type === "RUN" ? ui.layoff.placement.toLowerCase() : "to this set"}.`),
+      problem ? element("p", { className: "game-inline-error", text: problem }) : copy(`Preview is valid: add ${chosen.length} selected card${chosen.length === 1 ? "" : "s"} ${meld.type === "RUN" ? placement.toLowerCase() : "to this set"}.`),
       stack(
         commandButton("Add selected cards", () => {
           if (!guardTablePlay(hand, localSeatId)) return;
@@ -862,7 +888,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           execute("LAY_OFF", {
             meldId: meld.id,
             slots,
-            placement: ui.layoff.placement
+            placement
           }, {
             onAccepted: () => {
               ui.sheet = null;
@@ -1033,7 +1059,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       );
     } else if (copyForPhase.step === "play") {
       controls.push(
-        commandButton("Make a meld", () => {
+        commandButton("Add set or run", () => {
           if (!guardTablePlay(hand, localSeatId)) return;
           const chosen = selectedOrAnnounce(cards);
           if (!chosen) return;

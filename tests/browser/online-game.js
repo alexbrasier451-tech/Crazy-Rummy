@@ -293,6 +293,10 @@ function snapshots() {
 globalThis.onlineGameHarness = Object.freeze({
   ready,
   snapshots,
+  peerSnapshots: () => Object.fromEntries([...pairs].map(([playerId, pair]) => [
+    playerId,
+    { host: pair.host.getSnapshot(), guest: pair.guest.getSnapshot() }
+  ])),
   topologySnapshots: () => Object.fromEntries([...topologies].map(([playerId, item]) => [
     playerId,
     item.getSnapshot()

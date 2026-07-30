@@ -45,6 +45,9 @@ export function createManagedSignallingAdapter({
   let providerIceServers = null;
   let credentialError = null;
   let lastError = null;
+  let subscribed = false;
+  let subscriptionPromise = null;
+  let subscriptionGeneration = 0;
   const listeners = new Set();
   const signalListeners = new Set();
   const peerRoutes = new Map();
@@ -72,13 +75,24 @@ export function createManagedSignallingAdapter({
         }, { now: clock(), allowProviderManagedTurn: true });
       }
       credentialError = null;
-      transition(PEER_STATE.CONNECTED);
+      ensureSubscribed().catch((cause) => {
+        if (closed) return;
+        const recoveryError = new PeerTransportError(
+          "SIGNALLING_UNAVAILABLE",
+          "Managed signalling could not restore its subscription.",
+          { retryable: true, cause },
+        );
+        transition(PEER_STATE.DISCONNECTED, recoveryError);
+      });
     } catch (cause) {
       credentialError = cause;
       transition(PEER_STATE.FAILED, cause);
     }
   };
   const onDisconnected = ({ willReconnect } = {}) => {
+    subscribed = false;
+    subscriptionGeneration += 1;
+    subscriptionPromise = null;
     if (!closed) transition(willReconnect ? PEER_STATE.CONNECTING : PEER_STATE.DISCONNECTED);
   };
   const onMessage = ({ data } = {}) => receive(data);
@@ -99,6 +113,23 @@ export function createManagedSignallingAdapter({
     for (const listener of [...signalListeners]) listener(envelope);
   }
 
+  function ensureSubscribed() {
+    if (closed || !started) return Promise.resolve();
+    if (subscribed) return Promise.resolve();
+    if (subscriptionPromise) return subscriptionPromise;
+    const generation = subscriptionGeneration;
+    subscriptionPromise = Promise.resolve(client.subscribe(channel))
+      .then(() => {
+        if (closed || generation !== subscriptionGeneration) return;
+        subscribed = true;
+        transition(PEER_STATE.CONNECTED);
+      })
+      .finally(() => {
+        if (generation === subscriptionGeneration) subscriptionPromise = null;
+      });
+    return subscriptionPromise;
+  }
+
   async function start() {
     if (closed) throw new PeerTransportError("SIGNALLING_CLOSED", "Signalling is closed.");
     if (started) return getSnapshot();
@@ -111,8 +142,7 @@ export function createManagedSignallingAdapter({
     try {
       if (typeof client.connect === "function" && client.state !== "connected") await client.connect();
       if (credentialError) throw credentialError;
-      await client.subscribe(channel);
-      if (state === PEER_STATE.SIGNALLING) transition(PEER_STATE.CONNECTED);
+      await ensureSubscribed();
       return getSnapshot();
     } catch (cause) {
       const error = cause instanceof PeerTransportError
@@ -184,11 +214,13 @@ export function createManagedSignallingAdapter({
   async function close() {
     if (closed) return;
     closed = true;
+    subscriptionGeneration += 1;
     client.off?.("connected", onConnected);
     client.off?.("disconnected", onDisconnected);
     client.off?.("message", onMessage);
     client.off?.("direct", onDirect);
-    if (started) await client.unsubscribe?.(channel);
+    if (started && subscribed) await client.unsubscribe?.(channel);
+    subscribed = false;
     transition(PEER_STATE.CLOSED);
     signalListeners.clear();
     listeners.clear();

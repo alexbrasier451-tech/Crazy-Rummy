@@ -127,6 +127,13 @@ export function createHostStarTransport({
       .map((playerId) => send(playerId, payload)));
   }
 
+  async function resume() {
+    if (closed) throw new PeerTransportError("TOPOLOGY_CLOSED", "The host-star transport is closed.");
+    await Promise.all([...peers.values()].map((peer) => peer.resume?.()));
+    refreshState();
+    return getSnapshot();
+  }
+
   async function receiveFrom(remotePlayerId, packet) {
     if (!packet || packet.type !== TOPOLOGY_MESSAGE || packet.schemaVersion !== schemaVersion) return;
     if (!seats.includes(packet.sourcePlayerId) || !seats.includes(packet.destinationPlayerId)) return;
@@ -171,6 +178,7 @@ export function createHostStarTransport({
     start,
     send,
     broadcast,
+    resume,
     close,
     getSnapshot,
     subscribe(listener) {

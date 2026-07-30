@@ -20,6 +20,13 @@ try {
   const wildCard = page.locator('[data-private-hand] [data-card-id="clubs:4"]');
   await wildCard.click();
   await page.getByLabel(/Select as lay-off destination/).click();
+  const layoffTargets = page.locator('[data-game-sheet="add-to-table"] [data-placement]');
+  assert.equal(await layoffTargets.count(), 2,
+    "a run should expose its two valid ends as separate card-preview targets");
+  assert.equal(await page.getByLabel("Destination meld").count(), 0,
+    "layoff targets must not be presented as a text select");
+  assert.equal(await layoffTargets.first().locator(".game-meld-card").count() > 0, true,
+    "each layoff target should be rendered as a card-form preview");
   const legalWildRank = page.getByLabel("Laid-off wild represents rank for 4 of clubs");
   assert.deepEqual(await legalWildRank.locator("option").evaluateAll((options) => (
     options.map((option) => option.value).filter(Boolean)

@@ -20,7 +20,7 @@ export function createOnlineMatchSession({
   createHostSession = createHostSyncSession, createClientSession = createClientSyncSession,
   recoveryStorage = createMatchRecoveryStorage(), completedSummaryStorage = createCompletedSummaryStorage(),
   playerStatisticsStorage = createPlayerStatisticsStorage(), recoveryRecord = null, clock = () => Date.now(),
-  connectionTimeoutMs = 15_000, scheduler = globalThis, onTerminal
+  connectionTimeoutMs = 15_000, scheduler = globalThis, visibility = defaultVisibility(), onTerminal
 } = {}) {
   const boot = validateMatchBootstrap(bootstrap, { playerId });
   const localSeat = boot.seats.find((seat) => seat.seatId === boot.localSeatId);
@@ -28,6 +28,7 @@ export function createOnlineMatchSession({
   if (isHost && !initialState) throw new TypeError("Host match composition requires canonical initial state.");
   const listeners = new Set();
   let disposed = false;
+  let started = false;
   let terminalReached = false;
   let completedSummary = null;
   let projection = null;
@@ -211,6 +212,7 @@ export function createOnlineMatchSession({
     network = { ...network, transport: topology.getSnapshot().state, state: sync.getStatus().state, sync: sync.getStatus().state };
     terminal();
     persist();
+    started = true;
     return publish();
   }
   function submit(type, payload = {}) {
@@ -227,5 +229,39 @@ export function createOnlineMatchSession({
       queued: isHost ? result?.accepted === true : result?.queued === true
     });
   }
-  return freeze({ start, getSnapshot: snapshot, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }, submit, execute: submit, reconnect() { return sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret }); }, async dispose() { if (disposed) return; disposed = true; persist(); await topology.close?.(); listeners.clear(); } });
+  async function reconnect() {
+    if (disposed || !started) return snapshot();
+    await topology.resume?.();
+    if (!isHost
+      && sync.getStatus?.().state === "RECONNECTING"
+      && !guestRebindRequested) {
+      guestRebindRequested = true;
+      sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
+    }
+    return snapshot();
+  }
+  const unsubscribeVisibility = visibility?.subscribe?.(() => {
+    if (disposed || !started || visibility.isVisible?.() === false) return undefined;
+    return reconnect().catch(() => snapshot());
+  }) ?? (() => {});
+  return freeze({ start, getSnapshot: snapshot, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }, submit, execute: submit, reconnect, async dispose() { if (disposed) return; disposed = true; unsubscribeVisibility(); persist(); await topology.close?.(); listeners.clear(); } });
+}
+
+function defaultVisibility() {
+  if (typeof document === "undefined"
+    || typeof document.addEventListener !== "function"
+    || typeof document.removeEventListener !== "function") return null;
+  return {
+    isVisible: () => document.visibilityState !== "hidden",
+    subscribe(listener) {
+      document.addEventListener("visibilitychange", listener);
+      globalThis.addEventListener?.("pageshow", listener);
+      globalThis.addEventListener?.("online", listener);
+      return () => {
+        document.removeEventListener("visibilitychange", listener);
+        globalThis.removeEventListener?.("pageshow", listener);
+        globalThis.removeEventListener?.("online", listener);
+      };
+    }
+  };
 }

@@ -98,6 +98,45 @@ test("managed pair signalling maps the Metered publish/subscribe boundary and ca
   assert.deepEqual(hostClient.unsubscribed, ["crazy-rummy/v1/peer/pair-one"]);
 });
 
+test("managed signalling restores its channel subscription after the provider reconnects", async () => {
+  const bus = new ManagedClientBus();
+  const hostClient = bus.create("provider-host");
+  const guestClient = bus.create("provider-guest");
+  const host = createManagedSignallingAdapter({
+    client: hostClient,
+    channel: "crazy-rummy/v1/peer/reconnected-pair",
+    localPlayerId: "host",
+    remotePlayerId: "guest",
+    clock: () => 1_000,
+    createSignalId: () => "signal_host_reconnected_0001",
+  });
+  const guest = createManagedSignallingAdapter({
+    client: guestClient,
+    channel: "crazy-rummy/v1/peer/reconnected-pair",
+    localPlayerId: "guest",
+    remotePlayerId: "host",
+    clock: () => 1_000,
+    createSignalId: () => "signal_guest_reconnected_01",
+  });
+  const received = [];
+  guest.subscribeSignals((signal) => received.push(signal.kind));
+  await Promise.all([host.start(), guest.start()]);
+
+  guestClient.disconnect();
+  guestClient.reconnect();
+  await settle();
+  await host.sendSignal({
+    matchId: MATCH,
+    toPlayerId: "guest",
+    kind: SIGNAL_KIND.RESTART,
+    payload: { reason: "resume-after-background" },
+  });
+
+  assert.deepEqual(received, [SIGNAL_KIND.RESTART]);
+  assert.equal(guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  await Promise.all([host.close(), guest.close()]);
+});
+
 test("untrusted direct traffic cannot claim the authenticated provider route", async () => {
   const bus = new ManagedClientBus();
   const hostClient = bus.create("provider-host");
@@ -271,6 +310,72 @@ test("the designated guest offerer restarts ICE and restores an interrupted peer
   await Promise.all([pair.host.close(), pair.guest.close()]);
 });
 
+test("foreground resume forces a fresh recovery epoch from either peer role", async () => {
+  const pair = await connectedPeerFixture({
+    hostOfferer: false,
+    hostStartsFirst: true,
+  });
+  const offersBeforeHostResume = pair.signalling.sent
+    .filter(({ kind }) => kind === SIGNAL_KIND.OFFER).length;
+  const hostStates = [];
+  pair.host.subscribe(({ state }) => hostStates.push(state));
+
+  await pair.host.resume();
+  await settle();
+
+  assert.equal(hostStates.includes(PEER_STATE.DISCONNECTED), true);
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(
+    pair.signalling.sent.filter(({ kind }) => kind === SIGNAL_KIND.OFFER).length,
+    offersBeforeHostResume + 1,
+  );
+
+  const offersBeforeGuestResume = pair.signalling.sent
+    .filter(({ kind }) => kind === SIGNAL_KIND.OFFER).length;
+  const guestStates = [];
+  pair.guest.subscribe(({ state }) => guestStates.push(state));
+
+  await pair.guest.resume();
+  await settle();
+
+  assert.equal(guestStates.includes(PEER_STATE.DISCONNECTED), true);
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(
+    pair.signalling.sent.filter(({ kind }) => kind === SIGNAL_KIND.OFFER).length,
+    offersBeforeGuestResume + 1,
+  );
+  await Promise.all([pair.host.close(), pair.guest.close()]);
+});
+
+test("an answerer resume revives an offerer after retryable ICE exhaustion", async () => {
+  const guestScheduler = createIntervalScheduler();
+  const pair = await connectedPeerFixture({
+    hostOfferer: false,
+    hostStartsFirst: true,
+    maximumIceRestartAttempts: 1,
+    guestScheduler,
+  });
+  pair.signalling.dropSignals = true;
+  pair.rtc.guestConnection.connectionState = "disconnected";
+  pair.rtc.guestConnection.emit("connectionstatechange");
+  await settle();
+  guestScheduler.runNextTimeout();
+  await settle();
+
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.FAILED);
+  assert.equal(pair.guest.getSnapshot().lastError.code, "ICE_RESTART_EXHAUSTED");
+
+  pair.signalling.dropSignals = false;
+  await pair.host.resume();
+  await settle();
+
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  await Promise.all([pair.host.close(), pair.guest.close()]);
+});
+
 test("malformed or far-future wire traffic fails closed without extending liveness or growing reorder state", async () => {
   const malformed = await connectedPeerFixture({ maxWireBytes: 256, maxPendingMessages: 2 });
   malformed.rtc.channels.guest.send(JSON.stringify({
@@ -405,6 +510,8 @@ test("host-star topology accepts two seats", async () => {
     createPeer(options) { return peerBus.create(options); },
   });
   assert.deepEqual(topology.getSnapshot().connections.map(({ playerId }) => playerId), ["guest"]);
+  await topology.resume();
+  assert.equal(peerBus.resumeCount("host", "guest"), 1);
   await topology.close();
 });
 
@@ -438,6 +545,18 @@ class FakeManagedClient {
       expiresAt: null,
     });
   }
+  disconnect() {
+    this.state = "disconnected";
+    this.channels.clear();
+    this.handlers.get("disconnected")?.({ willReconnect: true });
+  }
+  reconnect() {
+    this.state = "connected";
+    this.handlers.get("connected")?.({
+      iceServers: [{ urls: "turn:relay.example:3478", username: "temporary", credential: "temporary" }],
+      expiresAt: null,
+    });
+  }
   async subscribe(channel) { this.channels.add(channel); }
   async unsubscribe(channel) { this.unsubscribed.push(channel); this.channels.delete(channel); }
   async publish(channel, data) {
@@ -455,7 +574,7 @@ class FakeManagedClient {
 }
 
 function createSignalPair() {
-  const endpoints = { sent: [] };
+  const endpoints = { sent: [], dropSignals: false };
   let id = 0;
   function endpoint(localPlayerId, remotePlayerId) {
     const listeners = new Set();
@@ -485,6 +604,7 @@ function createSignalPair() {
           expiresAt: createdAt + 30_000,
         });
         endpoints.sent.push(envelope);
+        if (endpoints.dropSignals) return;
         queueMicrotask(() => {
           for (const listener of endpoints[remotePlayerId].listeners) listener(envelope);
         });
@@ -606,10 +726,25 @@ function createRtcPair() {
 
 function createIntervalScheduler() {
   const tasks = [];
+  const timeouts = [];
   return {
     setInterval(callback) { tasks.push({ callback, cleared: false }); return tasks.length - 1; },
     clearInterval(id) { if (tasks[id]) tasks[id].cleared = true; },
+    setTimeout(callback) {
+      timeouts.push({ callback, cleared: false, completed: false });
+      return { timeout: timeouts.length - 1 };
+    },
+    clearTimeout(id) {
+      if (id && timeouts[id.timeout]) timeouts[id.timeout].cleared = true;
+    },
     runAll() { for (const task of tasks) if (!task.cleared) task.callback(); },
+    runNextTimeout() {
+      const task = timeouts.find((candidate) => !candidate.cleared && !candidate.completed);
+      if (!task) return false;
+      task.completed = true;
+      task.callback();
+      return true;
+    },
   };
 }
 
@@ -619,6 +754,9 @@ async function connectedPeerFixture({
   hostVerifyRemoteSeatProof,
   hostOfferer = true,
   hostStartsFirst = false,
+  maximumIceRestartAttempts,
+  hostScheduler = createIntervalScheduler(),
+  guestScheduler = createIntervalScheduler(),
 } = {}) {
   const signalling = createSignalPair();
   const rtc = createRtcPair();
@@ -631,6 +769,7 @@ async function connectedPeerFixture({
     heartbeatTimeoutMs: 30,
     maxWireBytes,
     maxPendingMessages,
+    maximumIceRestartAttempts,
   };
   const host = createWebRtcPeerConnection({
     ...common,
@@ -640,7 +779,7 @@ async function connectedPeerFixture({
     verifyRemoteSeatProof: hostVerifyRemoteSeatProof ?? verify("guest"),
     offerer: hostOfferer,
     signalling: signalling.host,
-    scheduler: createIntervalScheduler(),
+    scheduler: hostScheduler,
     rtcPeerConnectionFactory: rtc.hostFactory,
   });
   const guest = createWebRtcPeerConnection({
@@ -651,7 +790,7 @@ async function connectedPeerFixture({
     verifyRemoteSeatProof: verify("host"),
     offerer: !hostOfferer,
     signalling: signalling.guest,
-    scheduler: createIntervalScheduler(),
+    scheduler: guestScheduler,
     rtcPeerConnectionFactory: rtc.guestFactory,
   });
   if (hostStartsFirst) {
@@ -663,12 +802,16 @@ async function connectedPeerFixture({
   }
   await settle();
   assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
-  return { host, guest, rtc, signalling };
+  return { host, guest, rtc, signalling, hostScheduler, guestScheduler };
 }
 
 function createTopologyPeerBus() {
   const endpoints = new Map();
+  const resumeCounts = new Map();
   return {
+    resumeCount(localPlayerId, remotePlayerId) {
+      return resumeCounts.get(`${localPlayerId}->${remotePlayerId}`) ?? 0;
+    },
     create(options) {
       let state = PEER_STATE.IDLE;
       const states = new Set();
@@ -686,6 +829,9 @@ function createTopologyPeerBus() {
         async close() {
           state = PEER_STATE.CLOSED;
           for (const listener of states) listener({ state });
+        },
+        async resume() {
+          resumeCounts.set(key, (resumeCounts.get(key) ?? 0) + 1);
         },
         getSnapshot: () => ({ state }),
         subscribe(listener) { states.add(listener); return () => states.delete(listener); },

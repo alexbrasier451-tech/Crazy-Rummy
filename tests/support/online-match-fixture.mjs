@@ -150,6 +150,7 @@ export function createControlledTopologyNetwork({
     const connectionStates = new Map();
     let receiver = () => {};
     const stateListeners = new Set();
+    let resumeCount = 0;
     const value = Object.freeze({
       async start() {
         state = PEER_STATE.CONNECTED;
@@ -193,6 +194,13 @@ export function createControlledTopologyNetwork({
         const snapshot = value.getSnapshot();
         for (const listener of stateListeners) listener(snapshot);
       },
+      async resume() {
+        resumeCount += 1;
+        value._setState(PEER_STATE.DISCONNECTED);
+        await Promise.resolve();
+        value._setState(PEER_STATE.CONNECTED);
+        return value.getSnapshot();
+      },
       _receive(message) {
         return receiver(clone(message.payload), Object.freeze({
           sourcePlayerId: message.fromPlayerId,
@@ -208,7 +216,8 @@ export function createControlledTopologyNetwork({
         const snapshot = value.getSnapshot();
         for (const listener of stateListeners) listener(snapshot);
         return snapshot;
-      }
+      },
+      _resumeCount() { return resumeCount; }
     });
     endpoints.set(localPlayerId, value);
     return value;
@@ -272,7 +281,8 @@ export function withoutPrivateHand(view) {
 
 export function createOnlineMatchFixture({
   state = createThreeSeatState(),
-  network = createControlledTopologyNetwork()
+  network = createControlledTopologyNetwork(),
+  visibilityBySeat = {}
 } = {}) {
   const bootstraps = createStage6Bootstraps({ matchId: state.gameId });
   const sessions = {};
@@ -289,6 +299,7 @@ export function createOnlineMatchFixture({
       playerId: seat.playerId,
       initialState: seat.seatId === "a" ? state : undefined,
       transport: network.endpoint(seat.playerId),
+      visibility: visibilityBySeat[seat.seatId],
       recoveryStorage: storage,
       createHostSession(options) {
         hostSync = createHostSyncSession(options);

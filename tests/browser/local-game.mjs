@@ -354,7 +354,7 @@ try {
 
   await chooseCards(page, ["diamonds:10"]);
   await takeAction(page, "open-meld");
-  await page.getByText("Select at least three cards to make a meld.").waitFor();
+  await page.getByText("Select at least three cards to add a set or run.").waitFor();
   assert.equal(await control(page, "place-meld").isDisabled(), true,
     "an incomplete selection must not invent a meld type");
   assert.equal(await page.locator('[data-game-sheet="compose-meld"]').count(), 1,
@@ -401,7 +401,8 @@ try {
   assert.equal(await control(page, "place-meld").isEnabled(), true,
     "an inferred set must be ready to place immediately");
   await expectOneAcceptedRevision(page, () => control(page, "place-meld").click(), "opening set");
-  assert.match(await page.getByLabel("Shared table melds").innerText(), /set/i);
+  assert.doesNotMatch(await page.getByLabel("Shared table melds").innerText(), /set|run|north|east|south|west/i,
+    "shared-table melds should show cards only, without descriptive table text");
   assert.equal(await page.locator("button article").count(), 0,
     "meld controls must not nest non-interactive card articles inside a button");
   assert.match(
