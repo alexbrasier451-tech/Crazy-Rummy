@@ -449,9 +449,18 @@ export function createWebRtcPeerConnection({
       "The browser returned to the active game.",
       { retryable: true },
     );
+    transition(PEER_STATE.DISCONNECTED, cause);
+    try {
+      await signalling.resume?.();
+    } catch (refreshCause) {
+      transition(PEER_STATE.DISCONNECTED, new PeerTransportError(
+        "SIGNALLING_REFRESH_PENDING",
+        "Peer recovery is waiting for a fresh signalling connection.",
+        { retryable: true, cause: refreshCause },
+      ));
+    }
     if (offerer) beginRecovery(cause, { force: true });
     else {
-      transition(PEER_STATE.DISCONNECTED, cause);
       await requestRemoteRestart("browser-resumed");
     }
     armNegotiationWatchdog();

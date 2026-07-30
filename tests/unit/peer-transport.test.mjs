@@ -137,6 +137,96 @@ test("managed signalling restores its channel subscription after the provider re
   await Promise.all([host.close(), guest.close()]);
 });
 
+test("foreground resume replaces a silently stale connected provider before peer recovery", async () => {
+  const bus = new ManagedClientBus();
+  const hostClient = bus.create("provider-host");
+  const guestClient = bus.create("provider-guest");
+  let hostSignalId = 0;
+  let guestSignalId = 0;
+  const channel = "crazy-rummy/v1/peer/foreground-recovery";
+  const hostSignalling = createManagedSignallingAdapter({
+    client: hostClient,
+    channel,
+    localPlayerId: "host",
+    remotePlayerId: "guest",
+    clock: () => 1_000,
+    createSignalId: () => `signal_host_foreground_${++hostSignalId}`,
+  });
+  const guestSignalling = createManagedSignallingAdapter({
+    client: guestClient,
+    channel,
+    localPlayerId: "guest",
+    remotePlayerId: "host",
+    clock: () => 1_000,
+    createSignalId: () => `signal_guest_foreground_${++guestSignalId}`,
+  });
+  const rtc = createRtcPair();
+  const verify = (expectedPlayerId) => ({ remotePlayerId, seatProof }) =>
+    remotePlayerId === expectedPlayerId && seatProof === PROOFS[expectedPlayerId];
+  const common = {
+    matchId: MATCH,
+    ...VERSIONS,
+    heartbeatIntervalMs: 10,
+    heartbeatTimeoutMs: 30,
+  };
+  const host = createWebRtcPeerConnection({
+    ...common,
+    localPlayerId: "host",
+    remotePlayerId: "guest",
+    localSeatProof: PROOFS.host,
+    verifyRemoteSeatProof: verify("guest"),
+    offerer: false,
+    signalling: hostSignalling,
+    scheduler: createIntervalScheduler(),
+    rtcPeerConnectionFactory: rtc.hostFactory,
+  });
+  const guest = createWebRtcPeerConnection({
+    ...common,
+    localPlayerId: "guest",
+    remotePlayerId: "host",
+    localSeatProof: PROOFS.guest,
+    verifyRemoteSeatProof: verify("host"),
+    offerer: true,
+    signalling: guestSignalling,
+    scheduler: createIntervalScheduler(),
+    rtcPeerConnectionFactory: rtc.guestFactory,
+  });
+  await host.start();
+  await guest.start();
+  await settle();
+  assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(guest.getSnapshot().state, PEER_STATE.CONNECTED);
+
+  const guestConnectsBeforeForeground = guestClient.connectCalls;
+  guestClient.becomeSilentlyStale();
+  rtc.hostConnection.connectionState = "disconnected";
+  rtc.hostConnection.emit("connectionstatechange");
+  rtc.guestConnection.connectionState = "disconnected";
+  rtc.guestConnection.emit("connectionstatechange");
+  await guest.resume();
+  await settle();
+
+  assert.equal(guestClient.closeCalls, 1);
+  assert.equal(guestClient.connectCalls, guestConnectsBeforeForeground + 1);
+  assert.equal(guestClient.channels.has(channel), true);
+  assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.deepEqual(rtc.guestConnection.offerOptions.at(-1), { iceRestart: true });
+
+  const hostConnectsBeforeForeground = hostClient.connectCalls;
+  hostClient.becomeSilentlyStale();
+  await host.resume();
+  await settle();
+
+  assert.equal(hostClient.closeCalls, 1);
+  assert.equal(hostClient.connectCalls, hostConnectsBeforeForeground + 1);
+  assert.equal(hostClient.channels.has(channel), true);
+  assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  await Promise.all([host.close(), guest.close()]);
+  await Promise.all([hostClient.close(), guestClient.close()]);
+});
+
 test("managed signalling retries a transient subscription failure without another provider event", async () => {
   const bus = new ManagedClientBus();
   const client = bus.create("provider-guest");
@@ -205,6 +295,7 @@ test("a never-settling provider publish times out so later recovery traffic can 
     kind: SIGNAL_KIND.RESTART,
     payload: { reason: "recovery" },
   });
+  await settle();
   assert.equal(scheduler.runNextTimeout(), true);
   await assert.rejects(stuckPublish, { code: "SIGNAL_SEND_FAILED" });
   await signalling.sendSignal({
@@ -706,12 +797,15 @@ class FakeManagedClient {
     this.unsubscribed = [];
     this.failSubscribeCount = 0;
     this.connectCalls = 0;
+    this.closeCalls = 0;
     this.hangNextPublish = false;
+    this.silentlyStale = false;
   }
   on(type, listener) { this.handlers.set(type, listener); return this; }
   off(type, listener) { if (this.handlers.get(type) === listener) this.handlers.delete(type); return this; }
   async connect() {
     this.connectCalls += 1;
+    this.silentlyStale = false;
     this.state = "connected";
     this.handlers.get("connected")?.({
       iceServers: [{ urls: "turn:relay.example:3478", username: "temporary", credential: "temporary" }],
@@ -724,6 +818,7 @@ class FakeManagedClient {
     this.handlers.get("disconnected")?.({ willReconnect });
   }
   reconnect() {
+    this.silentlyStale = false;
     this.state = "connected";
     this.handlers.get("connected")?.({
       iceServers: [{ urls: "turn:relay.example:3478", username: "temporary", credential: "temporary" }],
@@ -737,12 +832,22 @@ class FakeManagedClient {
     }
     this.channels.add(channel);
   }
+  becomeSilentlyStale() {
+    this.silentlyStale = true;
+    this.channels.clear();
+  }
+  async close() {
+    this.closeCalls += 1;
+    this.channels.clear();
+    this.state = "closed";
+  }
   async unsubscribe(channel) { this.unsubscribed.push(channel); this.channels.delete(channel); }
   async publish(channel, data) {
     if (this.hangNextPublish) {
       this.hangNextPublish = false;
       return new Promise(() => {});
     }
+    if (this.silentlyStale) return;
     this.published.push({ channel, data });
     for (const target of this.bus.clients) {
       if (target !== this && target.channels.has(channel)) {
