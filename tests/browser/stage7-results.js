@@ -57,6 +57,8 @@ const unrelatedLocalCompletion = {
 
 let handSnapshot;
 let handListeners = new Set();
+let acknowledgementOrdinal = 0;
+const acknowledgementCalls = [];
 let replayCalls = 0;
 let replayResolve;
 let copiedText = "";
@@ -79,8 +81,15 @@ const onlineGameSession = {
     handListeners.add(listener);
     return () => handListeners.delete(listener);
   },
-  async submit() {
-    return { queued: true, commandId: "ack-stage-7" };
+  async submit(type) {
+    const commandId = `ack-stage-7-${++acknowledgementOrdinal}`;
+    acknowledgementCalls.push({
+      commandId,
+      type,
+      handId: handSnapshot.view.hand.id,
+      revision: handSnapshot.view.revision
+    });
+    return { queued: true, commandId };
   }
 };
 
@@ -89,20 +98,22 @@ function replace(screen) {
   app.replaceChildren(screen);
 }
 
-function renderHand() {
+function renderHand(index = 1) {
   handListeners = new Set();
   handSnapshot = {
     localSeatId: "b",
     lastAction: null,
     view: {
       lifecycle: "IN_PROGRESS",
+      revision: 7 + index,
       rules,
       seatOrder: ["a", "b", "c"],
       activeSeatOrder: ["a", "b", "c"],
       seats,
-      completedHands: [completedHands[0]],
+      completedHands: completedHands.slice(0, index),
       hand: {
-        index: 1,
+        id: `hand-${index}`,
+        index,
         dealerSeatId: "a",
         phase: "HAND_COMPLETE",
         result: {
@@ -125,10 +136,13 @@ function renderHand() {
   }));
 }
 
-function acceptAcknowledgement() {
+function acceptAcknowledgement({ includeLastAction = true } = {}) {
+  const commandId = acknowledgementCalls.at(-1)?.commandId;
   handSnapshot = {
     ...handSnapshot,
-    lastAction: { phase: "ACCEPTED", commandId: "ack-stage-7" },
+    lastAction: includeLastAction
+      ? { phase: "ACCEPTED", commandId }
+      : null,
     view: {
       ...handSnapshot.view,
       hand: {
@@ -137,6 +151,40 @@ function acceptAcknowledgement() {
           ...handSnapshot.view.hand.result,
           acknowledgedBySeatIds: ["b"]
         }
+      }
+    }
+  };
+  for (const listener of handListeners) listener(handSnapshot);
+}
+
+function rejectAcknowledgement({
+  commandId = acknowledgementCalls.at(-1)?.commandId,
+  detail = "The host rejected this acknowledgement."
+} = {}) {
+  handSnapshot = {
+    ...handSnapshot,
+    lastAction: {
+      phase: "REJECTED",
+      commandId,
+      reason: "TEST_REJECTION",
+      detail
+    }
+  };
+  for (const listener of handListeners) listener(handSnapshot);
+}
+
+function advanceToNextHand() {
+  handSnapshot = {
+    ...handSnapshot,
+    lastAction: null,
+    view: {
+      ...handSnapshot.view,
+      revision: handSnapshot.view.revision + 1,
+      hand: {
+        id: `hand-${handSnapshot.view.hand.index + 1}`,
+        index: handSnapshot.view.hand.index + 1,
+        phase: "DEALER_INITIAL_DISCARD",
+        result: null
       }
     }
   };
@@ -188,6 +236,9 @@ function renderForfeit() {
 globalThis.__stage7Results = {
   renderHand,
   acceptAcknowledgement,
+  rejectAcknowledgement,
+  advanceToNextHand,
+  acknowledgementCalls: () => structuredClone(acknowledgementCalls),
   renderStoredFinal,
   renderForfeit,
   resolveReplay() { replayResolve?.(); },

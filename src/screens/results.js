@@ -137,26 +137,129 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
         : `Waiting for ${waiting.length} other ${waiting.length === 1 ? "player" : "players"} to continue.`
       : `${waiting.length} player${waiting.length === 1 ? "" : "s"} still to continue.`
   );
+  const continueStatus = copy(status.textContent);
+  continueStatus.dataset.continueStatus = "true";
   let pending = false;
+  let pendingCommandId = null;
+  let continueButton;
+
+  const setContinueStatus = (text, stateName = "ready") => {
+    status.textContent = text;
+    status.dataset.state = stateName;
+    continueStatus.textContent = text;
+    continueStatus.dataset.state = stateName;
+  };
+
+  const setContinueButton = ({ disabled, label, busy = false }) => {
+    continueButton.disabled = disabled;
+    continueButton.toggleAttribute("aria-busy", busy);
+    continueButton.querySelector(".action__label").textContent = label;
+  };
+
+  const reconcileAcknowledgement = (next) => {
+    const nextView = next?.view;
+    if (nextView?.lifecycle === LIFECYCLE.COMPLETE) {
+      navigate("/final-result");
+      return true;
+    }
+    if (nextView?.hand?.phase !== "HAND_COMPLETE") {
+      navigate("/game");
+      return true;
+    }
+
+    const nextResult = nextView.hand.result;
+    const accepted = new Set(nextResult?.acknowledgedBySeatIds ?? []);
+    const nextParticipants = nextView.activeSeatOrder ?? nextView.seatOrder ?? [];
+    const nextLocalSeatId = next?.localSeatId ?? localSeatId;
+    if (accepted.has(nextLocalSeatId)) {
+      const othersWaiting = nextParticipants.filter((seatId) => !accepted.has(seatId));
+      pending = false;
+      pendingCommandId = null;
+      setContinueButton({
+        disabled: true,
+        label: "Acknowledgement accepted"
+      });
+      setContinueStatus(
+        othersWaiting.length
+          ? `Acknowledgement accepted. Waiting for ${othersWaiting.length} other ${othersWaiting.length === 1 ? "player" : "players"}.`
+          : "Acknowledgement accepted. Starting the next hand."
+      );
+      return true;
+    }
+
+    const action = next?.lastAction;
+    const actionMatches = Boolean(
+      pending
+      && pendingCommandId
+      && action?.commandId === pendingCommandId
+    );
+    if (actionMatches && action.phase === "REJECTED") {
+      pending = false;
+      pendingCommandId = null;
+      setContinueButton({
+        disabled: false,
+        label: "Continue to next hand"
+      });
+      setContinueStatus(
+        action.detail
+          ?? `Could not continue: ${action.reason ?? "the host rejected the acknowledgement"}.`,
+        "error"
+      );
+      return true;
+    }
+    if (actionMatches && action.phase === "UNCERTAIN") {
+      setContinueStatus(
+        "The acknowledgement is being reconciled with the host. It is safe to wait; the app will not send it twice.",
+        "error"
+      );
+      return true;
+    }
+    return false;
+  };
 
   const continueMatch = async () => {
-    if (state.lifecycle === LIFECYCLE.COMPLETE) {
-      navigate("/final-result");
-      return;
-    }
+    if (reconcileAcknowledgement(session.getSnapshot())) return;
     if (isOnline) {
       if (!localWaiting || pending) return;
       pending = true;
-      continueButton.disabled = true;
-      status.textContent = "Sending your acknowledgement. The next hand has not started yet.";
-      const commandResult = await session.submit(COMMAND_TYPE.ACKNOWLEDGE_HAND_RESULT);
-      if (!commandResult?.queued && commandResult?.accepted !== true) {
-        status.textContent = commandResult?.detail
-          ?? `Could not continue: ${commandResult?.reason ?? "the host did not queue the acknowledgement"}.`;
-        status.dataset.state = "error";
+      setContinueButton({
+        disabled: true,
+        label: "Sending acknowledgement...",
+        busy: true
+      });
+      setContinueStatus("Sending your acknowledgement. The next hand has not started yet.");
+      let commandResult;
+      try {
+        commandResult = await session.submit(COMMAND_TYPE.ACKNOWLEDGE_HAND_RESULT);
+      } catch (error) {
         pending = false;
-        continueButton.disabled = false;
+        pendingCommandId = null;
+        setContinueButton({
+          disabled: false,
+          label: "Continue to next hand"
+        });
+        setContinueStatus(
+          error?.message ?? "The acknowledgement could not be sent. Try again.",
+          "error"
+        );
+        return;
       }
+      if (pending) pendingCommandId = commandResult?.commandId ?? null;
+      if (!commandResult?.queued && commandResult?.accepted !== true) {
+        pending = false;
+        pendingCommandId = null;
+        setContinueButton({
+          disabled: false,
+          label: "Continue to next hand"
+        });
+        setContinueStatus(
+          commandResult?.detail
+            ?? `Could not continue: ${commandResult?.reason ?? "the host did not queue the acknowledgement"}.`,
+          "error"
+        );
+        return;
+      }
+      reconcileAcknowledgement(session.getSnapshot());
       return;
     }
     for (const seatId of waiting) {
@@ -175,7 +278,7 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
       ? "/final-result"
       : "/game");
   };
-  const continueButton = actionButton({
+  continueButton = actionButton({
     label: isOnline
       ? localWaiting ? "Continue to next hand" : "Waiting for other players"
       : handIndex === state.rules.handCount
@@ -218,6 +321,7 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
             ? "Each active player acknowledges only their own result. The host starts the next hand after everyone is ready."
             : "Everyone at this table continues together before the next hand is dealt."
         ),
+        continueStatus,
         stack(
           continueButton,
           actionButton({
@@ -240,33 +344,7 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
     menuContent: [actionButton({ label: "Return to Lobby", variant: "secondary", onActivate: () => returnToLobby(navigate, onReturnToLobby) })]
   });
   const unsubscribe = isOnline
-    ? session.subscribe?.((next) => {
-      const nextView = next?.view;
-      if (nextView?.lifecycle === LIFECYCLE.COMPLETE) {
-        navigate("/final-result");
-      } else if (nextView?.hand?.phase !== "HAND_COMPLETE") {
-        navigate("/game");
-      } else if (next?.lastAction?.phase === "REJECTED") {
-        status.textContent = next.lastAction.detail
-          ?? `Could not continue: ${next.lastAction.reason ?? "the host rejected the acknowledgement"}.`;
-        status.dataset.state = "error";
-        pending = false;
-        continueButton.disabled = false;
-      } else if (pending && next?.lastAction?.phase === "ACCEPTED") {
-        const nextResult = nextView?.hand?.result;
-        const accepted = new Set(nextResult?.acknowledgedBySeatIds ?? []);
-        const nextParticipants = nextView?.activeSeatOrder ?? nextView?.seatOrder ?? [];
-        if (!accepted.has(next?.localSeatId ?? localSeatId)) return;
-        const othersWaiting = nextParticipants.filter((seatId) => !accepted.has(seatId));
-        pending = false;
-        continueButton.disabled = true;
-        continueButton.querySelector(".action__label").textContent = "Acknowledgement accepted";
-        status.textContent = othersWaiting.length
-          ? `Acknowledgement accepted. Waiting for ${othersWaiting.length} other ${othersWaiting.length === 1 ? "player" : "players"}.`
-          : "Acknowledgement accepted. Starting the next hand.";
-        status.dataset.state = "ready";
-      }
-    }) ?? (() => {})
+    ? session.subscribe?.(reconcileAcknowledgement) ?? (() => {})
     : () => {};
   const disposeFeedback = startResultFeedback(shell, localSession, "hand-complete");
   shell.disposeScreen = () => {

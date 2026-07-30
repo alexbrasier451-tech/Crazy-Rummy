@@ -30,6 +30,72 @@ try {
   );
   assert.equal(await page.getByRole("button", { name: "Acknowledgement accepted" }).isDisabled(), true);
 
+  await page.evaluate(() => globalThis.__stage7Results.advanceToNextHand());
+  assert.equal(
+    await page.evaluate(() => globalThis.__stage7Results.lastNavigation),
+    "/game",
+    "the first fully acknowledged hand should return to the game"
+  );
+
+  await page.evaluate(() => {
+    globalThis.__stage7Results.lastNavigation = null;
+    globalThis.__stage7Results.renderHand(2);
+  });
+  await continueButton.click();
+  assert.equal(
+    (await page.evaluate(() => globalThis.__stage7Results.acknowledgementCalls())).at(-1).handId,
+    "hand-2",
+    "the second Continue action must target the current hand"
+  );
+  await page.evaluate(() =>
+    globalThis.__stage7Results.acceptAcknowledgement({ includeLastAction: false })
+  );
+  assert.match(
+    await page.getByRole("status").innerText(),
+    /Acknowledgement accepted\. Waiting for 2 other players\./,
+    "the authoritative hand result must settle Continue even when transient lastAction metadata is absent"
+  );
+  assert.equal(await page.getByRole("button", { name: "Acknowledgement accepted" }).isDisabled(), true);
+  await page.evaluate(() => globalThis.__stage7Results.advanceToNextHand());
+  assert.equal(
+    await page.evaluate(() => globalThis.__stage7Results.lastNavigation),
+    "/game",
+    "the second fully acknowledged hand should return to the game"
+  );
+
+  await page.evaluate(() => {
+    globalThis.__stage7Results.lastNavigation = null;
+    globalThis.__stage7Results.renderHand(3);
+  });
+  await continueButton.click();
+  assert.match(
+    await page.locator("[data-continue-status]").innerText(),
+    /Sending your acknowledgement/,
+    "Continue progress must remain visible beside the button when the top status is off-screen"
+  );
+  await page.evaluate(() =>
+    globalThis.__stage7Results.rejectAcknowledgement({ commandId: "unrelated-command" })
+  );
+  assert.equal(await page.getByRole("button", { name: "Sending acknowledgement..." }).isDisabled(), true,
+    "an unrelated command result must not change the pending acknowledgement");
+  await page.evaluate(() =>
+    globalThis.__stage7Results.rejectAcknowledgement({ detail: "Please retry this acknowledgement." })
+  );
+  assert.equal(await continueButton.isEnabled(), true,
+    "a matching rejection must unlock Continue for a safe retry");
+  assert.match(
+    await page.locator("[data-continue-status]").innerText(),
+    /Please retry this acknowledgement/,
+    "a matching rejection must be explained beside the retry control"
+  );
+  await continueButton.click();
+  await page.evaluate(() =>
+    globalThis.__stage7Results.acceptAcknowledgement({ includeLastAction: false })
+  );
+  assert.equal(await page.getByRole("button", { name: "Acknowledgement accepted" }).isDisabled(), true,
+    "a retried acknowledgement must settle from authoritative hand state"
+  );
+
   await page.evaluate(() => globalThis.__stage7Results.renderStoredFinal());
   assert.match(await page.getByRole("heading", { level: 1 }).innerText(), /Alex wins/);
   assert.equal(await page.locator('section[aria-label="Accepted final standings"]').count(), 1);
