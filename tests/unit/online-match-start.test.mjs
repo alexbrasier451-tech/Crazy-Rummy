@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { connectOnlineMatch } from "../../src/app/online-match-start.js";
+import {
+  connectOnlineMatch,
+  isRecoverableOnlineMatchSnapshot,
+  onlineMatchRoute
+} from "../../src/app/online-match-start.js";
 
 function fixture({ host = true, fail = false } = {}) {
   const calls = [];
@@ -81,4 +85,33 @@ test("a host composition failure still restores the ready room", async () => {
     /WebRTC is unavailable/
   );
   assert.deepEqual(value.calls, ["create-match", "abort"]);
+});
+
+test("a restored online match returns to the form for its authoritative phase", () => {
+  assert.equal(onlineMatchRoute({
+    view: { lifecycle: "IN_PROGRESS", hand: { phase: "AWAITING_DRAW" } }
+  }), "/game");
+  assert.equal(onlineMatchRoute({
+    view: { lifecycle: "IN_PROGRESS", hand: { phase: "HAND_COMPLETE" } }
+  }), "/hand-result");
+  assert.equal(onlineMatchRoute({
+    view: { lifecycle: "COMPLETE", hand: { phase: "HAND_COMPLETE" } }
+  }), "/final-result");
+});
+
+test("only a restored projection in a transient network state remains recoverable", () => {
+  for (const state of ["CONNECTING", "DISCONNECTED", "PAUSED", "RECONNECTING"]) {
+    assert.equal(isRecoverableOnlineMatchSnapshot({
+      view: { lifecycle: "IN_PROGRESS" },
+      network: { state }
+    }), true);
+  }
+  assert.equal(isRecoverableOnlineMatchSnapshot({
+    view: null,
+    network: { state: "RECONNECTING" }
+  }), false);
+  assert.equal(isRecoverableOnlineMatchSnapshot({
+    view: { lifecycle: "IN_PROGRESS" },
+    network: { state: "INCOMPATIBLE" }
+  }), false);
 });

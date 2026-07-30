@@ -4,16 +4,27 @@ import test from "node:test";
 import {
   CARD_IDS,
   COMMAND_TYPE,
+  HAND_END_REASON,
   HAND_SCHEDULE,
   LIFECYCLE,
   PHASE,
   assertStateInvariants,
+  cloneState,
+  completeHand,
   executeCommand
 } from "../../src/engine/index.js";
-import { SYNC_MESSAGE, SYNC_STATUS, createOnlineMatchSession } from "../../src/online/index.js";
+import {
+  SYNC_MESSAGE,
+  SYNC_STATUS,
+  createClientSyncSession,
+  createOnlineMatchSession
+} from "../../src/online/index.js";
 import { PEER_STATE } from "../../src/online/transport/index.js";
 import {
   STAGE6_SEATS,
+  STAGE6_ROOM_SECRET,
+  STAGE6_SEAT_SECRETS,
+  createControlledTopologyNetwork,
   createOnlineMatchFixture,
   createStage6Bootstraps,
   createThreeSeatState
@@ -113,6 +124,40 @@ function layoffReadyState() {
   return next;
 }
 
+function handCompleteState() {
+  const state = cloneState(createThreeSeatState());
+  const hand = state.hand;
+  const finalStockCardId = hand.stockCardIds.at(-1);
+  const allCardIds = [
+    ...hand.stockCardIds,
+    ...hand.discardCardIds,
+    ...Object.values(hand.handsBySeat).flat()
+  ];
+  const handsBySeat = Object.fromEntries(
+    state.seatOrder.map((seatId) => [seatId, hand.handsBySeat[seatId].slice(0, 7)])
+  );
+  const retained = new Set(Object.values(handsBySeat).flat());
+  state.hand = {
+    ...hand,
+    activeSeatId: "c",
+    phase: PHASE.AWAITING_DISCARD,
+    stockCardIds: [],
+    discardCardIds: allCardIds.filter((cardId) =>
+      cardId !== finalStockCardId && !retained.has(cardId)
+    ),
+    handsBySeat,
+    drawnCardId: finalStockCardId,
+    drawSource: "stock",
+    drewFinalStock: true
+  };
+  state.hand.discardCardIds.push(finalStockCardId);
+  const completed = completeHand(state, {
+    reason: HAND_END_REASON.STOCK_EXHAUSTED
+  });
+  assertStateInvariants(completed);
+  return completed;
+}
+
 function dropAllTo(network, destinationPlayerId) {
   let dropped = 0;
   while (network.dropWhere((message) => message.destinationPlayerId === destinationPlayerId)) {
@@ -124,8 +169,8 @@ function dropAllTo(network, destinationPlayerId) {
 function deadlineScheduler() {
   const tasks = [];
   return {
-    setTimeout(callback) {
-      const task = { callback, cancelled: false, ran: false };
+    setTimeout(callback, delay) {
+      const task = { callback, delay, cancelled: false, ran: false };
       tasks.push(task);
       return task;
     },
@@ -139,6 +184,46 @@ function deadlineScheduler() {
     },
     pending: () => tasks.filter((candidate) => !candidate.cancelled && !candidate.ran)
   };
+}
+
+function delayedTopology(remotePlayerIds) {
+  const listeners = new Set();
+  const sent = [];
+  let state = PEER_STATE.CONNECTING;
+  let resumeCount = 0;
+  const transport = {
+    async start() { return this.getSnapshot(); },
+    getSnapshot() {
+      return {
+        state,
+        connections: remotePlayerIds.map((playerId) => ({
+          playerId,
+          state
+        }))
+      };
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    onMessage() { return () => {}; },
+    send(destinationPlayerId, payload) {
+      if (state !== PEER_STATE.CONNECTED) throw new Error("Peer is still waking.");
+      sent.push({ destinationPlayerId, payload });
+    },
+    async resume() {
+      resumeCount += 1;
+      state = PEER_STATE.CONNECTED;
+      for (const listener of listeners) listener(this.getSnapshot());
+      return this.getSnapshot();
+    },
+    async close() {
+      state = PEER_STATE.CLOSED;
+    },
+    _resumeCount: () => resumeCount,
+    _sent: () => structuredClone(sent)
+  };
+  return transport;
 }
 
 test("three-seat authority keeps actions pending until delivery and fails illegal or malformed input closed", async (t) => {
@@ -275,6 +360,171 @@ test("a foregrounded guest recovers when only the host observed the interruption
   assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.RUNNING);
   assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
   assertConverged(fixture, "one-sided foreground recovery");
+});
+
+test("a hand-complete match persists interruption, coalesces foreground recovery, and continues", async (t) => {
+  const hostVisibility = createVisibilityHarness();
+  const guestVisibility = createVisibilityHarness();
+  const fixture = createOnlineMatchFixture({
+    state: handCompleteState(),
+    visibilityBySeat: {
+      a: hostVisibility,
+      b: guestVisibility
+    }
+  });
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  fixture.network.endpoint("player-a")._setState(PEER_STATE.DISCONNECTED, {
+    "player-b": PEER_STATE.DISCONNECTED,
+    "player-c": PEER_STATE.CONNECTED
+  });
+
+  assert.equal(fixture.sessions.a.getSnapshot().network.state, SYNC_STATUS.PAUSED);
+  const persisted = fixture.recoveryStorage.latest(fixture.state.gameId);
+  assert.equal(persisted.sync.sessionStatus.state, SYNC_STATUS.PAUSED);
+  assert.equal(persisted.sync.seats.b.connected, false);
+  assert.ok(Number.isFinite(persisted.sync.seats.b.recoveryDeadline));
+
+  await guestVisibility.show({ eventCount: 3 });
+  fixture.network.endpoint("player-a")._setState(PEER_STATE.CONNECTED);
+  fixture.network.flush();
+
+  assert.equal(
+    fixture.network.endpoint("player-b")._resumeCount(),
+    1,
+    "one mobile foreground burst must start only one reconnect"
+  );
+  assert.equal(fixture.sessions.a.getSnapshot().network.state, SYNC_STATUS.RUNNING);
+  assert.equal(fixture.sessions.b.getSnapshot().network.state, SYNC_STATUS.RUNNING);
+  assert.equal(fixture.authoritativeState().hand.phase, PHASE.HAND_COMPLETE);
+  assertConverged(fixture, "hand-complete recovery");
+
+  for (const seatId of fixture.authoritativeState().activeSeatOrder) {
+    fixture.submit(seatId, COMMAND_TYPE.ACKNOWLEDGE_HAND_RESULT);
+  }
+  assert.notEqual(fixture.authoritativeState().hand.phase, PHASE.HAND_COMPLETE);
+  assertConverged(fixture, "continued hand after foreground recovery");
+
+  const hostResumeCount = fixture.network.endpoint("player-a")._resumeCount();
+  await hostVisibility.show({ eventCount: 3 });
+  assert.equal(
+    fixture.network.endpoint("player-a")._resumeCount(),
+    hostResumeCount + 1,
+    "host foreground events must also be coalesced"
+  );
+});
+
+test("a cold-restored guest immediately exposes its hand-complete projection", async (t) => {
+  const fixture = createOnlineMatchFixture({ state: handCompleteState() });
+  t.after(() => fixture.dispose());
+  await fixture.start();
+  const recoveryRecord = fixture.clientSyncs.b.exportRecoveryRecord({
+    roomSecret: STAGE6_ROOM_SECRET,
+    seatSecret: STAGE6_SEAT_SECRETS.b
+  });
+  const restoredNetwork = createControlledTopologyNetwork();
+  const restored = createOnlineMatchSession({
+    bootstrap: createStage6Bootstraps().b,
+    playerId: "player-b",
+    transport: restoredNetwork.endpoint("player-b"),
+    recoveryRecord,
+    recoveryStorage: {
+      write() {},
+      writeComposition() {},
+      remove() {}
+    }
+  });
+  t.after(() => restored.dispose());
+
+  await restored.start();
+
+  assert.equal(restored.getSnapshot().view.hand.phase, PHASE.HAND_COMPLETE);
+  assert.equal(restored.getSnapshot().view.revision, recoveryRecord.authoritativeSequence);
+});
+
+test("a restored hand-complete session can reconnect after its initial peer deadline", async (t) => {
+  const fixture = createOnlineMatchFixture({ state: handCompleteState() });
+  t.after(() => fixture.dispose());
+  await fixture.start();
+  const recoveryRecord = fixture.clientSyncs.b.exportRecoveryRecord({
+    roomSecret: STAGE6_ROOM_SECRET,
+    seatSecret: STAGE6_SEAT_SECRETS.b
+  });
+  const sessionScheduler = deadlineScheduler();
+  const clientScheduler = deadlineScheduler();
+  const transport = delayedTopology(["player-a"]);
+  const restored = createOnlineMatchSession({
+    bootstrap: createStage6Bootstraps().b,
+    playerId: "player-b",
+    transport,
+    recoveryRecord,
+    scheduler: sessionScheduler,
+    connectionTimeoutMs: 10,
+    recoveryStorage: {
+      write() {},
+      writeComposition() {},
+      remove() {}
+    },
+    createClientSession(options) {
+      return createClientSyncSession({
+        ...options,
+        scheduler: clientScheduler
+      });
+    }
+  });
+  t.after(() => restored.dispose());
+
+  const starting = restored.start();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sessionScheduler.runNext(), true);
+  await assert.rejects(starting, /connection timed out/);
+  assert.equal(restored.getSnapshot().view.hand.phase, PHASE.HAND_COMPLETE);
+  assert.equal(restored.getSnapshot().network.state, SYNC_STATUS.RECONNECTING);
+
+  await restored.reconnect();
+
+  assert.equal(transport._resumeCount(), 1);
+  assert.ok(
+    transport._sent().length >= 1,
+    "foreground recovery must retry the authenticated rebind"
+  );
+});
+
+test("a restored host remains recoverable while its peers wake up", async (t) => {
+  const fixture = createOnlineMatchFixture({ state: handCompleteState() });
+  t.after(() => fixture.dispose());
+  await fixture.start();
+  const recoveryRecord = fixture.hostSync.exportRecoveryRecord();
+  const sessionScheduler = deadlineScheduler();
+  const transport = delayedTopology(["player-b", "player-c"]);
+  const restored = createOnlineMatchSession({
+    bootstrap: createStage6Bootstraps().a,
+    playerId: "player-a",
+    initialState: recoveryRecord.authoritativeState,
+    transport,
+    recoveryRecord,
+    scheduler: sessionScheduler,
+    connectionTimeoutMs: 10,
+    recoveryStorage: {
+      write() {},
+      writeComposition() {},
+      remove() {}
+    }
+  });
+  t.after(() => restored.dispose());
+
+  const starting = restored.start();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sessionScheduler.runNext(), true);
+  await assert.rejects(starting, /connection timed out/);
+  assert.equal(restored.getSnapshot().view.hand.phase, PHASE.HAND_COMPLETE);
+  assert.equal(restored.getSnapshot().network.state, "CONNECTING");
+
+  await restored.reconnect();
+
+  assert.equal(transport._resumeCount(), 1);
+  assert.equal(restored.getSnapshot().network.state, SYNC_STATUS.RUNNING);
 });
 
 test("a guest layoff retries lost reconciliation until the accepted action unlocks", async (t) => {
@@ -665,6 +915,18 @@ test("a thirteen-hand online match converges through delay, reorder, loss, dupli
     true,
     "normal completion must clear the private active-match recovery record"
   );
+  const resumeCounts = Object.fromEntries(STAGE6_SEATS.map(({ playerId }) => [
+    playerId,
+    fixture.network.endpoint(playerId)._resumeCount()
+  ]));
+  await Promise.all(Object.values(fixture.sessions).map((session) => session.reconnect()));
+  for (const { playerId } of STAGE6_SEATS) {
+    assert.equal(
+      fixture.network.endpoint(playerId)._resumeCount(),
+      resumeCounts[playerId],
+      "a completed match is terminal and must not restart peer negotiation"
+    );
+  }
 });
 
 function createVisibilityHarness() {
@@ -676,9 +938,12 @@ function createVisibilityHarness() {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    async show() {
+    async show({ eventCount = 1 } = {}) {
       visible = true;
-      await Promise.all([...listeners].map((listener) => listener()));
+      await Promise.all(Array.from(
+        { length: eventCount },
+        () => [...listeners].map((listener) => listener())
+      ).flat());
     }
   };
 }

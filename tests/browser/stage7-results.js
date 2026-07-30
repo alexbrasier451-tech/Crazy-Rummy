@@ -103,6 +103,11 @@ function renderHand(index = 1) {
   handSnapshot = {
     localSeatId: "b",
     lastAction: null,
+    network: {
+      state: "RUNNING",
+      authoritativeSequence: 7 + index,
+      pendingCommandIds: []
+    },
     view: {
       lifecycle: "IN_PROGRESS",
       revision: 7 + index,
@@ -152,6 +157,20 @@ function acceptAcknowledgement({ includeLastAction = true } = {}) {
           acknowledgedBySeatIds: ["b"]
         }
       }
+    }
+  };
+  for (const listener of handListeners) listener(handSnapshot);
+}
+
+function setNetwork(state, {
+  recoveryDeadline = state === "RUNNING" ? null : Date.now() + 300_000
+} = {}) {
+  handSnapshot = {
+    ...handSnapshot,
+    network: {
+      ...handSnapshot.network,
+      state,
+      recoveryDeadline
     }
   };
   for (const listener of handListeners) listener(handSnapshot);
@@ -235,6 +254,7 @@ function renderForfeit() {
 
 globalThis.__stage7Results = {
   renderHand,
+  setNetwork,
   acceptAcknowledgement,
   rejectAcknowledgement,
   advanceToNextHand,

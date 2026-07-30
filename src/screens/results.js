@@ -1,5 +1,6 @@
 import {
   actionButton,
+  connectionState,
   createAcceptedFeedbackCoordinator,
   routeLine,
   scoreStrip
@@ -17,6 +18,7 @@ import {
   nextHandPreview,
   ownScoreBreakdown
 } from "../game-ui/results-presenters.js";
+import { onlineGameState } from "./online-game.js";
 import {
   bulletList,
   copy,
@@ -142,6 +144,25 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
   let pending = false;
   let pendingCommandId = null;
   let continueButton;
+  const networkPresentation = isOnline ? onlineGameState(snapshot) : null;
+  let onlineBlocked = Boolean(networkPresentation?.disabled);
+  let continueControl = {
+    disabled: isOnline && !localWaiting,
+    label: isOnline
+      ? localWaiting ? "Continue to next hand" : "Waiting for other players"
+      : handIndex === state.rules.handCount
+      ? "View final standings"
+      : "Continue to next hand",
+    busy: false
+  };
+  let networkNode = networkPresentation
+    ? connectionState({
+        state: networkPresentation.connectionState,
+        label: networkPresentation.label,
+        detail: networkPresentation.detail,
+        announce: true
+      })
+    : null;
 
   const setContinueStatus = (text, stateName = "ready") => {
     status.textContent = text;
@@ -150,10 +171,16 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
     continueStatus.dataset.state = stateName;
   };
 
+  const renderContinueButton = () => {
+    if (!continueButton) return;
+    continueButton.disabled = continueControl.disabled || onlineBlocked;
+    continueButton.toggleAttribute("aria-busy", continueControl.busy);
+    continueButton.querySelector(".action__label").textContent = continueControl.label;
+  };
+
   const setContinueButton = ({ disabled, label, busy = false }) => {
-    continueButton.disabled = disabled;
-    continueButton.toggleAttribute("aria-busy", busy);
-    continueButton.querySelector(".action__label").textContent = label;
+    continueControl = { disabled, label, busy };
+    renderContinueButton();
   };
 
   const reconcileAcknowledgement = (next) => {
@@ -220,7 +247,7 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
   const continueMatch = async () => {
     if (reconcileAcknowledgement(session.getSnapshot())) return;
     if (isOnline) {
-      if (!localWaiting || pending) return;
+      if (!localWaiting || pending || onlineGameState(session.getSnapshot()).disabled) return;
       pending = true;
       setContinueButton({
         disabled: true,
@@ -279,14 +306,25 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
       : "/game");
   };
   continueButton = actionButton({
-    label: isOnline
-      ? localWaiting ? "Continue to next hand" : "Waiting for other players"
-      : handIndex === state.rules.handCount
-      ? "View final standings"
-      : "Continue to next hand",
-    disabled: isOnline && !localWaiting,
+    label: continueControl.label,
+    disabled: continueControl.disabled || onlineBlocked,
     onActivate: continueMatch
   });
+
+  const reconcileOnlineSnapshot = (next) => {
+    const nextPresentation = onlineGameState(next);
+    onlineBlocked = Boolean(nextPresentation.disabled);
+    const replacement = connectionState({
+      state: nextPresentation.connectionState,
+      label: nextPresentation.label,
+      detail: nextPresentation.detail,
+      announce: true
+    });
+    networkNode?.replaceWith(replacement);
+    networkNode = replacement;
+    renderContinueButton();
+    return reconcileAcknowledgement(next);
+  };
 
   const shell = screenWithMenu({
     id: "hand-result",
@@ -294,6 +332,7 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
     title: winnerName ? `${winnerName} went out` : "Stock exhausted",
     status,
     content: [
+      networkNode,
       scoreStrip({
         label: `Accepted scores for hand ${handIndex}`,
         activePlayerId: result.winnerSeatId,
@@ -344,7 +383,7 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
     menuContent: [actionButton({ label: "Return to Lobby", variant: "secondary", onActivate: () => returnToLobby(navigate, onReturnToLobby) })]
   });
   const unsubscribe = isOnline
-    ? session.subscribe?.(reconcileAcknowledgement) ?? (() => {})
+    ? session.subscribe?.(reconcileOnlineSnapshot) ?? (() => {})
     : () => {};
   const disposeFeedback = startResultFeedback(shell, localSession, "hand-complete");
   shell.disposeScreen = () => {

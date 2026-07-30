@@ -36,12 +36,23 @@ function clone(value) {
 
 function noopRecoveryStorage() {
   const removedMatches = new Set();
+  const records = new Map();
   return Object.freeze({
-    read() { return null; },
-    write() { return null; },
-    writeComposition() { return null; },
-    remove(matchId) { removedMatches.add(matchId); },
-    wasRemoved: (matchId) => removedMatches.has(matchId)
+    read(matchId) { return clone(records.get(matchId) ?? null); },
+    write(matchId, value) {
+      records.set(matchId, clone(value));
+      return null;
+    },
+    writeComposition(matchId, value) {
+      records.set(matchId, clone(value));
+      return null;
+    },
+    remove(matchId) {
+      records.delete(matchId);
+      removedMatches.add(matchId);
+    },
+    wasRemoved: (matchId) => removedMatches.has(matchId),
+    latest: (matchId) => clone(records.get(matchId) ?? null)
   });
 }
 

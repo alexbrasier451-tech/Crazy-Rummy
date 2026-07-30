@@ -40,6 +40,7 @@ export function createOnlineMatchSession({
   let guestRebindRequested = false;
   let guestTransportInterrupted = false;
   let recoverySweepTimer = null;
+  let reconnectPromise = null;
   const interruptedPlayerIds = new Set();
   const playerToSeat = new Map(boot.seats.map((seat) => [seat.playerId, seat.seatId]));
   const seatToPlayer = new Map(boot.seats.map((seat) => [seat.seatId, seat.playerId]));
@@ -206,10 +207,21 @@ export function createOnlineMatchSession({
   function snapshot() {
     const status = sync.getStatus?.() ?? {};
     const pendingCommandIds = sync.inspect?.().pendingCommandIds ?? [];
-    const resolvedNetwork = { ...network, state: network.state === "CONNECTING" && status.state ? status.state : network.state, authoritativeSequence: status.authoritativeSequence ?? sequence, pendingCommandIds };
+    const resolvedNetwork = {
+      ...network,
+      state: network.state === "CONNECTING"
+        && network.transport === PEER_STATE.CONNECTED
+        && status.state
+        ? status.state
+        : network.state,
+      authoritativeSequence: status.authoritativeSequence ?? sequence,
+      pendingCommandIds
+    };
     return freeze({ mode: ONLINE_MATCH_MODE, localSeatId: boot.localSeatId, view: projection, completedSummary: completedSummary ? freeze(copy(completedSummary)) : null, status: freeze({ ...status, network: freeze(copy(resolvedNetwork)), authoritativeSequence: status.authoritativeSequence ?? sequence }), network: freeze(copy(resolvedNetwork)), lastAction: lastAction ? freeze(copy(lastAction)) : null });
   }
-  projection = isHost ? playerView(sync.getState(), boot.localSeatId) : null;
+  projection = isHost
+    ? playerView(sync.getState(), boot.localSeatId)
+    : sync.getProjection?.() ?? null;
   function waitForConnected() {
     const current = topology.getSnapshot();
     if (current.state === PEER_STATE.CONNECTED) return Promise.resolve(current);
@@ -250,12 +262,28 @@ export function createOnlineMatchSession({
   }
   async function start() {
     await startTopologyWithDeadline();
+    started = true;
+    if (!isHost && recoveryRecord) {
+      sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
+    }
+    const startingTransport = topology.getSnapshot().state;
+    const startingStatus = sync.getStatus();
+    network = {
+      ...network,
+      transport: startingTransport,
+      state: startingStatus.state === "RUNNING"
+        && startingTransport !== PEER_STATE.CONNECTED
+        ? "CONNECTING"
+        : startingStatus.state,
+      sync: startingStatus.state
+    };
+    if (isHost || recoveryRecord || projection) persist();
+    scheduleRecoverySweep();
+    publish();
     await waitForConnected();
     if (isHost) {
       for (const seat of boot.seats) if (seat.seatId !== boot.localSeatId) sync.sendSnapshot(seat.seatId, "INITIAL");
-    } else if (recoveryRecord) {
-      sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
-    } else {
+    } else if (!recoveryRecord) {
       // The host's initial snapshot is deliberately best-effort. Begin an
       // authenticated pull immediately so a lost first delivery cannot leave
       // a new guest with no playable projection.
@@ -265,7 +293,6 @@ export function createOnlineMatchSession({
     terminal();
     persist();
     scheduleRecoverySweep();
-    started = true;
     return publish();
   }
   function submit(type, payload = {}) {
@@ -283,15 +310,23 @@ export function createOnlineMatchSession({
     });
   }
   async function reconnect() {
-    if (disposed || !started) return snapshot();
-    await topology.resume?.();
-    if (!isHost
-      && sync.getStatus?.().state === "RECONNECTING"
-      && !guestRebindRequested) {
-      guestRebindRequested = true;
-      sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
-    }
-    return snapshot();
+    if (disposed || !started || terminalReached) return snapshot();
+    if (reconnectPromise) return reconnectPromise;
+    reconnectPromise = (async () => {
+      try {
+        await topology.resume?.();
+        if (!isHost
+          && sync.getStatus?.().state === "RECONNECTING"
+          && !guestRebindRequested) {
+          guestRebindRequested = true;
+          sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
+        }
+        return snapshot();
+      } finally {
+        reconnectPromise = null;
+      }
+    })();
+    return reconnectPromise;
   }
   const unsubscribeVisibility = visibility?.subscribe?.(() => {
     if (disposed || !started || visibility.isVisible?.() === false) return undefined;

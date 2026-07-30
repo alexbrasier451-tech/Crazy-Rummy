@@ -21,11 +21,35 @@ try {
   await page.waitForFunction(() => Boolean(globalThis.__stage7Results));
 
   const continueButton = page.getByRole("button", { name: "Continue to next hand" });
+  await page.evaluate(() => globalThis.__stage7Results.setNetwork("PAUSED"));
+  assert.match(
+    await page.locator(".connection-state").innerText(),
+    /Match paused/,
+    "the hand-complete screen must surface a lost connection"
+  );
+  assert.equal(
+    await continueButton.isDisabled(),
+    true,
+    "Continue must be held while the result is disconnected"
+  );
+  await page.evaluate(() => globalThis.__stage7Results.setNetwork("RECONNECTING"));
+  assert.match(
+    await page.locator(".connection-state").innerText(),
+    /Reconnecting/,
+    "the hand-complete screen must show foreground recovery"
+  );
+  await page.evaluate(() => globalThis.__stage7Results.setNetwork("RUNNING"));
+  assert.match(await page.locator(".connection-state").innerText(), /Online/);
+  assert.equal(
+    await continueButton.isEnabled(),
+    true,
+    "Continue must unlock after the authoritative session reconnects"
+  );
   await continueButton.click();
-  assert.match(await page.getByRole("status").innerText(), /Sending your acknowledgement/);
+  assert.match(await page.locator("p[role=status]").innerText(), /Sending your acknowledgement/);
   await page.evaluate(() => globalThis.__stage7Results.acceptAcknowledgement());
   assert.match(
-    await page.getByRole("status").innerText(),
+    await page.locator("p[role=status]").innerText(),
     /Acknowledgement accepted\. Waiting for 2 other players\./
   );
   assert.equal(await page.getByRole("button", { name: "Acknowledgement accepted" }).isDisabled(), true);
@@ -51,7 +75,7 @@ try {
     globalThis.__stage7Results.acceptAcknowledgement({ includeLastAction: false })
   );
   assert.match(
-    await page.getByRole("status").innerText(),
+    await page.locator("p[role=status]").innerText(),
     /Acknowledgement accepted\. Waiting for 2 other players\./,
     "the authoritative hand result must settle Continue even when transient lastAction metadata is absent"
   );

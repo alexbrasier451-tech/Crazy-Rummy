@@ -3,7 +3,11 @@ import "./styles/index.css";
 import { connectionState } from "./components/index.js";
 import { createRouter } from "./app/router.js";
 import { applyPreferencesToRoot, normalizePreferences } from "./app/preferences.js";
-import { connectOnlineMatch } from "./app/online-match-start.js";
+import {
+  connectOnlineMatch,
+  isRecoverableOnlineMatchSnapshot,
+  onlineMatchRoute
+} from "./app/online-match-start.js";
 import {
   activatePwaUpdate,
   getPwaStatus,
@@ -309,8 +313,19 @@ queueMicrotask(async () => {
   try {
     onlineMatchSession = restored;
     await onlineMatchSession.start();
-    router.navigate("/game", { replace: true, focus: true });
+    router.navigate(
+      onlineMatchRoute(onlineMatchSession.getSnapshot?.()),
+      { replace: true, focus: true }
+    );
   } catch {
+    const snapshot = onlineMatchSession?.getSnapshot?.();
+    if (isRecoverableOnlineMatchSnapshot(snapshot)) {
+      router.navigate(
+        onlineMatchRoute(snapshot),
+        { replace: true, focus: true }
+      );
+      return;
+    }
     await onlineMatchSession.dispose?.();
     onlineMatchSession = null;
   }

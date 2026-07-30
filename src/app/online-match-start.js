@@ -2,6 +2,22 @@
  * Compose a peer match as a recoverable transaction around the lobby's
  * CONNECTING state. Only the host may commit or roll back the shared room.
  */
+export function onlineMatchRoute(snapshot = {}) {
+  if (snapshot?.view?.lifecycle === "COMPLETE") return "/final-result";
+  if (snapshot?.view?.hand?.phase === "HAND_COMPLETE") return "/hand-result";
+  return "/game";
+}
+
+export function isRecoverableOnlineMatchSnapshot(snapshot = {}) {
+  const state = String(snapshot?.network?.state ?? "").toUpperCase();
+  return Boolean(snapshot?.view) && [
+    "CONNECTING",
+    "DISCONNECTED",
+    "PAUSED",
+    "RECONNECTING"
+  ].includes(state);
+}
+
 export async function connectOnlineMatch({
   lobby,
   bootstrap,
