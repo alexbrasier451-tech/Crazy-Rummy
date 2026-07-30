@@ -261,6 +261,12 @@ export function createWebRtcPeerConnection({
     }).catch(recoverOrFail);
   }
 
+  function beginHandshakeIfConnectionStayedOpen() {
+    if (connection?.connectionState === "connected" && channel?.readyState === "open") {
+      beginHandshake();
+    }
+  }
+
   function resetNegotiation() {
     remoteDescriptionSet = false;
     receivedHello = false;
@@ -449,9 +455,30 @@ export function createWebRtcPeerConnection({
       "The browser returned to the active game.",
       { retryable: true },
     );
+    transition(PEER_STATE.DISCONNECTED, cause);
+    try {
+      await signalling.resume?.();
+      const { iceServers } = await signalling.getIceServers({
+        matchId,
+        remotePlayerId,
+        iceTransportPolicy,
+      });
+      if (typeof connection.setConfiguration === "function") {
+        connection.setConfiguration({
+          ...(connection.getConfiguration?.() ?? {}),
+          iceServers,
+          iceTransportPolicy,
+        });
+      }
+    } catch (refreshCause) {
+      transition(PEER_STATE.DISCONNECTED, new PeerTransportError(
+        "SIGNALLING_REFRESH_PENDING",
+        "Peer recovery is waiting for a fresh signalling connection.",
+        { retryable: true, cause: refreshCause },
+      ));
+    }
     if (offerer) beginRecovery(cause, { force: true });
     else {
-      transition(PEER_STATE.DISCONNECTED, cause);
       await requestRemoteRestart("browser-resumed");
     }
     armNegotiationWatchdog();
@@ -492,6 +519,7 @@ export function createWebRtcPeerConnection({
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
       await sendSignal(SIGNAL_KIND.ANSWER, { description: plainDescription(connection.localDescription || answer) });
+      beginHandshakeIfConnectionStayedOpen();
       return;
     }
     if (envelope.kind === SIGNAL_KIND.ANSWER) {
@@ -499,6 +527,7 @@ export function createWebRtcPeerConnection({
       await connection.setRemoteDescription(envelope.payload?.description);
       remoteDescriptionSet = true;
       await flushCandidates();
+      beginHandshakeIfConnectionStayedOpen();
       return;
     }
     if (envelope.kind === SIGNAL_KIND.ICE_CANDIDATE) {

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Crazy Rummy wild route seal</title>
+  <desc id="desc">A patterned route star with the word Wild.</desc>
+  <circle cx="64" cy="64" r="58" fill="#f5efdf" stroke="#0b100e" stroke-width="4"/>
+  <circle cx="64" cy="64" r="49" fill="none" stroke="#e0b64f" stroke-width="3" stroke-dasharray="3 5"/>
+  <path d="m64 22 9 25 27-7-17 22 20 19-28-3-6 27-12-25-25 12 13-25-23-15 28-2z" fill="#123b2d" stroke="#0b100e" stroke-width="3"/>
+  <text x="64" y="70" fill="#f5efdf" font-family="Arial Narrow, Arial, sans-serif" font-size="22" font-weight="900" letter-spacing="2" text-anchor="middle">WILD</text>
+</svg>

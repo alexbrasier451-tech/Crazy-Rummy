@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 280" role="img" aria-labelledby="title desc">
+  <title id="title">Midnight Limited card back</title>
+  <desc id="desc">A symmetrical double-rail lattice and route node on a midnight field.</desc>
+  <defs>
+    <pattern id="rail" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="28" height="28" fill="#0b100e"/>
+      <path d="M0 8h28M0 20h28" stroke="#1b4a39" stroke-width="6"/>
+      <path d="M6 0v28M22 0v28" stroke="#617068" stroke-width="2"/>
+      <path d="M0 14h28" stroke="#e0b64f" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="shade">
+      <stop offset=".45" stop-color="#07090b" stop-opacity="0"/>
+      <stop offset="1" stop-color="#07090b" stop-opacity=".84"/>
+    </radialGradient>
+  </defs>
+  <rect width="200" height="280" rx="18" fill="#07090b"/>
+  <rect x="8" y="8" width="184" height="264" rx="13" fill="url(#rail)" stroke="#f5efdf" stroke-width="3"/>
+  <rect x="15" y="15" width="170" height="250" rx="10" fill="url(#shade)" stroke="#e0b64f" stroke-width="2"/>
+  <path d="M48 140h34m36 0h34" fill="none" stroke="#f5efdf" stroke-width="4"/>
+  <path d="M82 104h36l18 36-18 36H82l-18-36z" fill="#0b100e" stroke="#f5efdf" stroke-width="4"/>
+  <path d="M86 118h28v44H86zM78 132h44M78 148h44" fill="none" stroke="#e0b64f" stroke-width="4"/>
+  <circle cx="100" cy="140" r="6" fill="#3de0a5"/>
+</svg>

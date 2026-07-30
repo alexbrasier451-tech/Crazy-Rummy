@@ -362,6 +362,40 @@ test("a foregrounded guest recovers when only the host observed the interruption
   assertConverged(fixture, "one-sided foreground recovery");
 });
 
+test("a guest rebinds when authority reports its seat paused after a one-sided interruption", async (t) => {
+  const fixture = createOnlineMatchFixture({ state: handCompleteState() });
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  assert.equal(fixture.hostSync.disconnectSeat("b").ok, true);
+  fixture.network.flush();
+  assert.equal(
+    fixture.clientSyncs.b.getStatus().state,
+    SYNC_STATUS.RUNNING,
+    "the disconnected guest cannot receive the original PAUSED control",
+  );
+
+  assert.equal(
+    fixture.clientSchedulers.b.runNext(),
+    true,
+    "the guest's ordinary health probe must discover the authoritative pause",
+  );
+  fixture.network.flush();
+
+  assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.RUNNING);
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
+  assert.equal(
+    fixture.network.delivered.some((message) =>
+      message.fromPlayerId === "player-b"
+      && message.payload?.type === SYNC_MESSAGE.REBIND_REQUEST
+    ),
+    true,
+    "a self-disconnected PAUSED status must become an authenticated rebind",
+  );
+  assert.equal(fixture.authoritativeState().hand.phase, PHASE.HAND_COMPLETE);
+  assertConverged(fixture, "one-sided authoritative pause recovery");
+});
+
 test("a hand-complete match persists interruption, coalesces foreground recovery, and continues", async (t) => {
   const hostVisibility = createVisibilityHarness();
   const guestVisibility = createVisibilityHarness();

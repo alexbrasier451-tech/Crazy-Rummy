@@ -15,7 +15,7 @@ const GENERATED_FILE_PATTERN =
 const HASHED_ASSET_PATTERN =
   /^assets\/.+-[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9]+$/;
 const VERSIONED_PUBLIC_ASSET_PATTERN =
-  /^(?:art|icons)\/.+\.v[0-9]+\.(?:png|svg|webp)$/;
+  /^(?:art|icons|assets\/(?:brand|cards|materials|ui))\/.+\.v[0-9]+\.(?:png|svg|webp)$/;
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");

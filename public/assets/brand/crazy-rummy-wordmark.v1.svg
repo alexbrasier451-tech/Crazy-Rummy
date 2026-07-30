@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 180" role="img" aria-labelledby="title desc">
+  <title id="title">Crazy Rummy route wordmark</title>
+  <desc id="desc">Crazy Rummy framed by a double route rail and station nodes.</desc>
+  <rect width="640" height="180" rx="22" fill="#07090b"/>
+  <g fill="none" stroke="#e0b64f">
+    <path d="M28 38h584M28 48h584" stroke-width="3"/>
+    <circle cx="42" cy="43" r="9" fill="#07090b" stroke-width="4"/>
+    <circle cx="598" cy="43" r="9" fill="#07090b" stroke-width="4"/>
+  </g>
+  <text x="320" y="112" fill="#f5efdf" font-family="Arial Narrow, Arial, sans-serif" font-size="66" font-weight="800" letter-spacing="8" text-anchor="middle">CRAZY RUMMY</text>
+  <text x="320" y="146" fill="#c6bdaa" font-family="Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="7" text-anchor="middle">THIRTEEN HANDS · ONE JOURNEY</text>
+</svg>

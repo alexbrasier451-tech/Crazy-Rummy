@@ -13,6 +13,10 @@ test("only hashed bundles and explicitly versioned install assets qualify", () =
   assert.equal(isVersionedStaticAsset("assets/index-AbCdEf12.js"), true);
   assert.equal(isVersionedStaticAsset("icons/crazy-rummy-any.v1.svg"), true);
   assert.equal(isVersionedStaticAsset("art/card-back-lattice.v1.svg"), true);
+  assert.equal(
+    isVersionedStaticAsset("assets/cards/card-back-midnight-lattice.v1.svg"),
+    true
+  );
   assert.equal(isVersionedStaticAsset("assets/index.js"), false);
   assert.equal(isVersionedStaticAsset("art/card-back-lattice.svg"), false);
   assert.equal(isVersionedStaticAsset("art/card-back-lattice.latest.svg"), false);

@@ -31,6 +31,10 @@ try {
     await page.evaluate(() => globalThis.transportHarness.receivedByGuestTwo()),
     [1, 2, 3]
   );
+  await page.evaluate(() => globalThis.transportHarness.resumeConnectedGuest());
+  const recoveredSnapshots = await page.evaluate(() => globalThis.transportHarness.snapshots());
+  assert.equal(recoveredSnapshots.host.state, "connected");
+  assert.equal(recoveredSnapshots.guest_one.state, "connected");
   assert.doesNotMatch(await page.locator("body").innerText(), /seat-proof|candidate|sdp/i);
 
   await page.evaluate(() => globalThis.transportHarness.closeGuestOne());

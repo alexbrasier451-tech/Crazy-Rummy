@@ -84,6 +84,7 @@ export function createClientSyncSession({
   let healthProbeTimer = null;
   let needsStatusResync = recovered?.projection == null;
   let rebindCredentials = null;
+  let hostDisconnectedSeatIds = [];
   const pending = new Map();
   const completedCommands = new Set();
   const eventBuffer = new Map();
@@ -132,6 +133,7 @@ export function createClientSyncSession({
       state: connectionState,
       authoritativeSequence,
       hostRecoveryDeadline,
+      disconnectedSeatIds: [...hostDisconnectedSeatIds],
       terminalReason,
       ...clone(detail)
     });
@@ -250,6 +252,9 @@ export function createClientSyncSession({
     }
     connectionState = value.state;
     hostRecoveryDeadline = Number.isFinite(value.recoveryDeadline) ? value.recoveryDeadline : null;
+    hostDisconnectedSeatIds = Array.isArray(value.disconnectedSeatIds)
+      ? [...new Set(value.disconnectedSeatIds.filter((value) => typeof value === "string" && value))]
+      : [];
     if (connectionState === SYNC_STATUS.RUNNING) {
       terminalReason = null;
       rebindCredentials = null;
@@ -392,6 +397,7 @@ export function createClientSyncSession({
     const previousStatus = {
       state: connectionState,
       hostRecoveryDeadline,
+      disconnectedSeatIds: [...hostDisconnectedSeatIds],
       terminalReason
     };
     if (projectionChanged) {
@@ -406,6 +412,7 @@ export function createClientSyncSession({
     const statusChanged = appliedHostStatus && (
       connectionState !== previousStatus.state
       || hostRecoveryDeadline !== previousStatus.hostRecoveryDeadline
+      || hostDisconnectedSeatIds.join("\u0000") !== previousStatus.disconnectedSeatIds.join("\u0000")
       || terminalReason !== previousStatus.terminalReason
     );
     for (const bufferedSequence of [...eventBuffer.keys()]) {
@@ -500,6 +507,12 @@ export function createClientSyncSession({
 
   function handleControl(incoming) {
     const kind = incoming.payload.kind;
+    if (Array.isArray(incoming.payload.status?.disconnectedSeatIds)) {
+      hostDisconnectedSeatIds = [...new Set(
+        incoming.payload.status.disconnectedSeatIds
+          .filter((value) => typeof value === "string" && value)
+      )];
+    }
     switch (kind) {
       case "PAUSED":
         connectionState = SYNC_STATUS.PAUSED;
@@ -716,6 +729,7 @@ export function createClientSyncSession({
     eventBuffer.clear();
     projection = null;
     authoritativeSequence = 0;
+    hostDisconnectedSeatIds = [];
     return null;
   }
 

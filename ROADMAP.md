@@ -11,6 +11,8 @@ Reference documents:
 - [Decision register](docs/phase-0/STAGE_0_DECISION_REGISTER.md)
 - [Rules and state contract](docs/phase-0/RULES_AND_STATE_CONTRACT.md)
 - [ADR-0001](docs/decisions/ADR-0001-ONLINE-P2P-ARCHITECTURE.md)
+- [v1.1 graphics-overhaul package](docs/v1.1/README.md)
+- [v1.1 detailed roadmap](docs/v1.1/ROADMAP.md)
 
 Chunk sizes are **S** (one narrow contract/configuration/helper), **M** (one
 complete component or flow), and **L** (a coherent integration slice that
@@ -484,9 +486,72 @@ visually consistent on supported phones.
   private, small-community, or public.
 - **Done when:** the owner explicitly releases or withholds the hosted game.
 
+## Version 1.1 — Graphics overhaul track
+
+**Status:** Stage 0 and Compartment Table direction owner-approved; beta
+application promoted to `1.0.0`; production implementation held pending exact
+immutable-beta reconciliation
+
+Version 1.1 is a presentation-layer overhaul, not a rules, networking, privacy,
+or state-semantics release. Its governing package is the
+[v1.1 documentation index](docs/v1.1/README.md), with the detailed delivery
+sequence in the [v1.1 roadmap](docs/v1.1/ROADMAP.md).
+
+### v1.1 Stage 0 — Creative and implementation contract
+
+- Freeze the free-only budget, product precedence, Midnight Limited direction,
+  binding creative ambition, beta coordination, evidence policy, and owner
+  authority.
+- **Exit:** the owner accepts the
+  [Stage 0 decision register](docs/v1.1/STAGE_0_DECISION_REGISTER.md) through
+  the [Stage 0 sign-off gate](docs/v1.1/STAGE_0_SIGNOFF.md).
+- **Consequence:** authorise concept/keyframe exploration only; do not begin
+  production UI implementation.
+
+### v1.1 Stage 1 — Creative divergence and keyframes
+
+- Produce at least three materially different structural concepts for the
+  lobby and principal gameplay surface.
+- Select and explain the strongest compliant direction; complete required
+  compact, baseline, tablet, reduced-motion, and forced-colour keyframes.
+- Map every route and required gameplay moment to a signature treatment.
+- Treat reduced-motion and forced-colour representations as concept direction,
+  not implementation, accessibility, interaction, or device evidence.
+- **Controller record:** [Stage 1.1.1 concepts and verification](docs/v1.1/stage-1.1.1/README.md)
+  are complete, and Compartment Table is owner-approved.
+
+### v1.1 Stage 2 — Foundations, asset plan, and production baseline
+
+- Define the semantic token, typography, authored-card, original-asset,
+  provenance, fallback, and performance-budget plan.
+- Apply the [beta coordination gate](docs/v1.1/BETA_COORDINATION.md) to the
+  exact beta revision the project owner has signed complete.
+- Reconcile route, state, DOM, accessibility, persistence, PWA, and test
+  contracts; invalidate stale visual assumptions.
+- **Exit:** the project owner has signed the beta complete, the owner approves
+  Stage 1 evidence, and engineering records the reconciled production baseline
+  revision.
+
+### v1.1 Stages 3–7 — Foundations through release proof
+
+- Build visual foundations and original assets.
+- Recompose startup, lobby, waiting room, and table formation.
+- Deliver the authored card/gameplay hero system and authoritative motion.
+- Complete results, rules, settings, recovery, offline, and PWA presentation.
+- Reconcile performance, accessibility, visual regression, real-device
+  evidence, provenance, and the creative-coverage record.
+- Develop and merge stage work only behind a disabled flag or isolated path;
+  activate v1.1 atomically across all in-scope routes and retain the legacy
+  presentation for rollback until Stage 7 acceptance.
+- **Release exit:** the owner decides that the implemented application has
+  pushed the boat out sufficiently; technical compliance cannot override that
+  judgement.
+
 ## Critical path
 
 `Phase 0 rules + trust + network spike → PWA shell → deterministic engine → local integration harness → lobby service → peer transport → full online game → real-phone beta`
+
+`v1.1 Stage 0 contract → three-way concept divergence → owner keyframe approval → owner beta-complete sign-off → exact-beta reconciliation → production visual implementation → creative/accessibility/performance/device proof → owner release judgement`
 
 Do not begin provider-specific lobby implementation before the Phase 0
 real-phone rendezvous/WebRTC spike. Do not debug rules through a live network:

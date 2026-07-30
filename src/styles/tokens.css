@@ -1,34 +1,72 @@
 :root {
   color-scheme: dark;
 
-  --color-page-depth: #0b0d0e;
-  --color-deep-panel: #151817;
-  --color-baize: #1c2a23;
-  --color-raised: #26332b;
-  --color-strong-edge: #424a43;
-  --color-cream: #f7f2e9;
-  --color-muted-cream: #bdb5a6;
-  --color-rail-green: #0d7a52;
-  --color-bright-green: #38c286;
-  --color-signal-red: #c94b4b;
-  --color-bright-red: #ef6b61;
-  --color-ticket-gold: #e2b542;
-  --color-brass-highlight: #f2d27a;
+  /* Midnight Limited material primitives. */
+  --midnight-1000: #07090b;
+  --midnight-950: #0b100e;
+  --carriage-900: #121a17;
+  --baize-800: #123b2d;
+  --baize-700: #1b4a39;
+  --ticket-100: #f5efdf;
+  --ticket-300: #c6bdaa;
+  --brass-500: #e0b64f;
+  --brass-300: #f3d98c;
+  --signal-green: #3de0a5;
+  --signal-red: #ff746b;
+  --signal-blue: #78b4ff;
+  --suit-red: #a82936;
+  --suit-black: #111411;
+
+  /* Stable semantic aliases consumed by the beta presentation contract. */
+  --color-page-depth: #07090b;
+  --color-deep-panel: #121a17;
+  --color-baize: #123b2d;
+  --color-raised: #1b4a39;
+  --color-strong-edge: #617068;
+  --color-cream: #f5efdf;
+  --color-muted-cream: #c6bdaa;
+  --color-rail-green: #1b4a39;
+  --color-bright-green: #3de0a5;
+  --color-signal-red: #d94f4a;
+  --color-bright-red: #ff746b;
+  --color-signal-blue: #78b4ff;
+  --color-ticket-gold: #e0b64f;
+  --color-brass-highlight: #f3d98c;
   --color-panel-sheen: rgb(255 255 255 / 0.055);
-  --color-soft-divider: rgb(226 181 66 / 0.24);
-  --color-ink: #101211;
-  --color-suit-red: #a32932;
-  --color-suit-black: #101211;
+  --color-soft-divider: rgb(224 182 79 / 0.24);
+  --color-ink: #0b100e;
+  --color-suit-red: #a82936;
+  --color-suit-black: #111411;
+
+  /* Decision roles keep component code independent from literal materials. */
+  --surface-void: var(--color-page-depth);
+  --surface-carriage: var(--color-deep-panel);
+  --surface-table: var(--color-baize);
+  --surface-table-raised: var(--color-raised);
+  --surface-ticket: var(--color-cream);
+  --text-primary: var(--color-cream);
+  --text-secondary: var(--color-muted-cream);
+  --text-on-ticket: var(--color-ink);
+  --edge-subtle: rgb(245 239 223 / 0.18);
+  --edge-material: var(--color-strong-edge);
+  --edge-current: var(--color-ticket-gold);
+  --state-accepted: var(--color-bright-green);
+  --state-rejected: var(--color-bright-red);
+  --state-information: var(--color-signal-blue);
+  --state-current: var(--color-ticket-gold);
 
   --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
-  --font-display: "Arial Narrow", "Roboto Condensed", var(--font-ui);
+  --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed",
+    var(--font-ui);
+  --font-card: Georgia, "Times New Roman", var(--font-ui);
 
   --text-xs: clamp(0.75rem, 0.71rem + 0.18vw, 0.8125rem);
   --text-sm: clamp(0.875rem, 0.83rem + 0.2vw, 0.9375rem);
   --text-md: 1rem;
   --text-lg: clamp(1.125rem, 1.04rem + 0.4vw, 1.3125rem);
   --text-xl: clamp(1.75rem, 1.45rem + 1.3vw, 2.5rem);
+  --text-hero: clamp(2.35rem, 1.75rem + 3vw, 4.8rem);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -40,6 +78,7 @@
   --radius-sm: 0.375rem;
   --radius-md: 0.75rem;
   --radius-lg: 1.125rem;
+  --radius-sheet: 1.5rem;
   --radius-pill: 999px;
 
   --tap-min: 2.75rem;
@@ -50,10 +89,23 @@
   --safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
   --safe-left: max(var(--shell-gutter), env(safe-area-inset-left));
 
-  --duration-press: 140ms;
-  --duration-sheet: 220ms;
-  --duration-card: 280ms;
+  --duration-press: 120ms;
+  --duration-state: 180ms;
+  --duration-sheet: 240ms;
+  --duration-card: 300ms;
+  --duration-route: 480ms;
+  --duration-hero: 820ms;
   --ease-out: cubic-bezier(0.2, 0.78, 0.25, 1);
+  --ease-in: cubic-bezier(0.55, 0.06, 0.68, 0.19);
+  --ease-card-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-lift: 0.25rem;
+  --motion-route-distance: 1.5rem;
+
+  --z-field: 0;
+  --z-furniture: 10;
+  --z-object: 20;
+  --z-decision: 40;
+  --z-moment: 60;
 
   --shadow-tactile:
     inset 0 1px 0 rgb(255 255 255 / 0.09),
@@ -63,12 +115,46 @@
     0 1rem 3rem rgb(0 0 0 / 0.58);
   --focus-ring: 0 0 0 0.2rem var(--color-page-depth),
     0 0 0 0.4rem var(--color-ticket-gold);
+
+  --texture-baize-opacity: 0.15;
+  --texture-paper-opacity: 0.09;
+  --effect-reflection-opacity: 0.12;
+  --effect-blur: 1.5rem;
 }
 
 @media (prefers-contrast: more) {
   :root {
-    --color-muted-cream: #ded8cc;
-    --color-strong-edge: #7d887f;
+    --color-muted-cream: #eee8dc;
+    --color-strong-edge: #aab6ae;
+    --edge-subtle: rgb(245 239 223 / 0.58);
+    --texture-baize-opacity: 0;
+    --texture-paper-opacity: 0;
+    --effect-reflection-opacity: 0;
+  }
+}
+
+html[data-contrast="high"] {
+  --color-muted-cream: #eee8dc;
+  --color-strong-edge: #aab6ae;
+  --edge-subtle: rgb(245 239 223 / 0.58);
+  --texture-baize-opacity: 0;
+  --texture-paper-opacity: 0;
+  --effect-reflection-opacity: 0;
+}
+
+html[data-quality="degraded"] {
+  --texture-baize-opacity: 0;
+  --texture-paper-opacity: 0;
+  --effect-reflection-opacity: 0;
+  --effect-blur: 0;
+}
+
+@media (prefers-reduced-data: reduce) {
+  :root {
+    --texture-baize-opacity: 0;
+    --texture-paper-opacity: 0;
+    --effect-reflection-opacity: 0;
+    --effect-blur: 0;
   }
 }
 

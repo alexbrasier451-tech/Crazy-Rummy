@@ -1,0 +1,682 @@
+/* Stage 1.1.4 — Compartment Table and authored-card hero programme.
+ * Loaded after the beta component/screen sheets so these rules remain a
+ * presentation layer: engine, authority, DOM reading order and controls stay
+ * unchanged. */
+
+.game-workspace--compartment {
+  --v11-ink: var(--midnight-950, #0b100e);
+  --v11-carriage: var(--carriage-900, #121a17);
+  --v11-baize: var(--baize-800, #123b2d);
+  --v11-baize-raised: var(--baize-700, #1b4a39);
+  --v11-ticket: var(--ticket-100, #f5efdf);
+  --v11-ticket-muted: var(--ticket-300, #c6bdaa);
+  --v11-brass: var(--brass-500, #e0b64f);
+  --v11-brass-light: var(--brass-300, #f3d98c);
+  isolation: isolate;
+  gap: clamp(0.75rem, 2.5vw, 1.4rem);
+}
+
+.game-workspace--compartment::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  background:
+    linear-gradient(105deg, transparent 0 68%, rgb(243 217 140 / 0.035) 76%, transparent 84%),
+    repeating-linear-gradient(90deg, transparent 0 3.5rem, rgb(224 182 79 / 0.025) 3.55rem 3.6rem);
+  content: "";
+  pointer-events: none;
+}
+
+.game-network-rail {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.35rem 1rem 1rem 0.35rem;
+  background:
+    linear-gradient(90deg, rgb(120 180 255 / 0.11), transparent 48%),
+    var(--v11-carriage);
+}
+
+.game-network-rail::after {
+  position: absolute;
+  inset: 0.32rem 0.55rem 0.32rem auto;
+  width: 1.6rem;
+  border-block: 1px solid currentcolor;
+  content: "";
+  opacity: 0.42;
+}
+
+.game-network-rail[data-blocking="true"] {
+  position: sticky;
+  z-index: 9;
+  inset-block-start: max(0.5rem, env(safe-area-inset-top));
+  border-inline-start-width: 0.45rem;
+  box-shadow: 0 0.8rem 1.8rem rgb(0 0 0 / 0.48);
+}
+
+.game-workspace--compartment[data-network-mode="pending"] .game-network-rail,
+.game-workspace--compartment[data-authority-state="pending"] .game-network-rail {
+  border-style: double;
+}
+
+.game-turn-prompt {
+  border-radius: 0.3rem 999px 999px 0.3rem;
+  letter-spacing: 0.015em;
+}
+
+.game-compartment-table {
+  position: relative;
+  display: grid;
+  grid-template-areas:
+    "table-head"
+    "seats"
+    "scores"
+    "spine"
+    "melds";
+  gap: clamp(0.65rem, 2.2vw, 1rem);
+  border: 1px solid rgb(224 182 79 / 0.34);
+  border-radius: clamp(1.2rem, 6vw, 2.5rem);
+  padding: clamp(0.75rem, 3vw, 1.25rem);
+  background:
+    radial-gradient(ellipse at 50% 43%, rgb(61 224 165 / 0.08), transparent 52%),
+    linear-gradient(135deg, rgb(255 255 255 / 0.035), transparent 26%),
+    url("/art/baize-texture.v1.svg") center / 18rem,
+    var(--v11-baize);
+  box-shadow:
+    inset 0 0 0 0.35rem rgb(7 9 11 / 0.48),
+    inset 0 0 0 0.42rem rgb(224 182 79 / 0.2),
+    inset 0 1.2rem 2.5rem rgb(255 255 255 / 0.025),
+    0 1.1rem 2.5rem rgb(0 0 0 / 0.38);
+}
+
+.game-compartment-table::before,
+.game-compartment-table::after {
+  position: absolute;
+  inset-block: 4.6rem 1.2rem;
+  width: 0.22rem;
+  border-radius: 999px;
+  background: linear-gradient(transparent, rgb(224 182 79 / 0.46) 25% 75%, transparent);
+  content: "";
+  pointer-events: none;
+}
+
+.game-compartment-table::before {
+  inset-inline-start: 0.38rem;
+}
+
+.game-compartment-table::after {
+  inset-inline-end: 0.38rem;
+}
+
+.game-table__header {
+  grid-area: table-head;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.35rem 0.7rem;
+  align-items: baseline;
+  border-block-end: 1px solid rgb(224 182 79 / 0.26);
+  padding: 0.15rem 0.3rem 0.6rem;
+}
+
+.game-table__header h2 {
+  margin: 0;
+}
+
+.game-table__eyebrow,
+.game-table__wild {
+  color: var(--v11-brass-light);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 850;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.game-table__wild {
+  text-align: end;
+}
+
+.game-seat-perimeter {
+  grid-area: seats;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.game-seat-perimeter .player-chip {
+  position: relative;
+  min-height: 4rem;
+  border-radius: 0.35rem 0.35rem 0.85rem 0.85rem;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.055), transparent 42%),
+    rgb(11 16 14 / 0.76);
+  box-shadow: inset 0 -0.18rem 0 rgb(0 0 0 / 0.32);
+}
+
+.game-seat-perimeter .player-chip[data-current="true"] {
+  border-style: double;
+  box-shadow:
+    inset 0 -0.18rem 0 rgb(0 0 0 / 0.32),
+    0 0 0 0.12rem var(--v11-brass);
+}
+
+.game-seat-perimeter .player-chip[data-current="true"]::after {
+  position: absolute;
+  inset: auto 0.4rem 0.2rem;
+  content: "CURRENT TURN";
+  color: var(--v11-brass-light);
+  font-size: 0.53rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: end;
+}
+
+.game-compartment-table > .score-strip {
+  grid-area: scores;
+  border-block: 1px solid rgb(224 182 79 / 0.18);
+  background: rgb(7 9 11 / 0.2);
+}
+
+.game-table-spine {
+  grid-area: spine;
+  position: relative;
+  grid-template-columns: repeat(2, minmax(7.2rem, 1fr));
+  justify-self: center;
+  width: min(100%, 19rem);
+}
+
+.game-table-spine::before {
+  position: absolute;
+  z-index: 0;
+  inset: 1.7rem 50% 0;
+  width: 1px;
+  background: linear-gradient(transparent, var(--v11-brass), transparent);
+  content: "";
+  opacity: 0.55;
+}
+
+.game-pile {
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  border: 1px solid rgb(224 182 79 / 0.2);
+  border-radius: 0.9rem;
+  padding: 0.55rem;
+  background: rgb(7 9 11 / 0.18);
+}
+
+.game-pile h3 {
+  color: var(--v11-ticket-muted);
+  font-size: var(--text-xs, 0.75rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.game-pile--discard {
+  background:
+    radial-gradient(circle at 50% 46%, rgb(224 182 79 / 0.12), transparent 62%),
+    rgb(7 9 11 / 0.16);
+}
+
+.game-meld-sidings {
+  grid-area: melds;
+  border-block-start: 1px dashed rgb(224 182 79 / 0.3);
+  padding-block-start: 0.65rem;
+}
+
+.game-meld-sidings::before {
+  content: "PUBLIC MELD SIDINGS";
+  color: var(--v11-ticket-muted);
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.11em;
+}
+
+.game-meld-sidings .game-meld {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr;
+  gap: 0.2rem 0.7rem;
+  border-radius: 0.35rem 1rem 1rem 0.35rem;
+  background:
+    linear-gradient(90deg, rgb(224 182 79 / 0.12), transparent 62%),
+    rgb(7 9 11 / 0.3);
+}
+
+.game-meld-sidings .game-meld > strong,
+.game-meld-sidings .game-meld-summary {
+  display: block;
+}
+
+.game-meld-sidings .game-meld-summary {
+  color: var(--v11-ticket-muted);
+  font-size: var(--text-xs, 0.75rem);
+}
+
+.game-meld-sidings .meld-group {
+  grid-column: 1 / -1;
+  overflow-x: auto;
+}
+
+.game-meld-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 0.55), transparent 32%),
+    var(--v11-ticket);
+}
+
+.game-meld-card::before {
+  position: absolute;
+  inset: 0.18rem;
+  border: 1px solid currentcolor;
+  border-radius: 0.18rem;
+  content: "";
+  opacity: 0.18;
+}
+
+.game-private-hand--foreground {
+  position: relative;
+  overflow: visible;
+  border: 1px solid rgb(224 182 79 / 0.26);
+  border-radius: 2rem 2rem 0.75rem 0.75rem;
+  background:
+    radial-gradient(ellipse at 50% 0, rgb(255 255 255 / 0.06), transparent 58%),
+    linear-gradient(180deg, var(--v11-baize-raised), var(--v11-carriage));
+  box-shadow:
+    inset 0 0.22rem 0 rgb(224 182 79 / 0.22),
+    0 -0.65rem 1.5rem rgb(0 0 0 / 0.24);
+}
+
+.game-private-hand--foreground .hand-tray {
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+}
+
+.game-private-hand--foreground .hand-tray__list {
+  align-items: end;
+  gap: 0;
+  padding-block-start: 1rem;
+  scroll-padding-inline: 2rem;
+}
+
+.game-private-hand--foreground .hand-tray__item {
+  margin-inline-end: clamp(-1rem, -2.8vw, -0.35rem);
+  padding-inline: 0.15rem;
+}
+
+.game-private-hand--foreground .hand-tray__item:nth-child(4n + 1) {
+  transform: rotate(-1.4deg) translateY(0.15rem);
+}
+
+.game-private-hand--foreground .hand-tray__item:nth-child(4n + 3) {
+  transform: rotate(1.4deg) translateY(0.15rem);
+}
+
+.playing-card {
+  isolation: isolate;
+  border-color: #d2c7b4;
+  background:
+    radial-gradient(circle at 50% 38%, rgb(224 182 79 / 0.055), transparent 34%),
+    linear-gradient(145deg, rgb(255 255 255 / 0.72), transparent 32%),
+    var(--ticket-100, #f5efdf);
+}
+
+.playing-card__keyline {
+  position: absolute;
+  z-index: -1;
+  inset: 0.22rem;
+  border: 1px solid currentcolor;
+  border-radius: max(0.2rem, calc(0.7rem - 0.22rem));
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.playing-card__centre {
+  text-shadow: 0 1px 0 rgb(255 255 255 / 0.45);
+}
+
+.playing-card__court-mark {
+  position: absolute;
+  z-index: -1;
+  inset: 50% auto auto 50%;
+  width: 52%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 0.16rem double currentcolor;
+  opacity: 0.12;
+  font-size: 0;
+}
+
+.playing-card[data-wild="true"] {
+  background:
+    repeating-linear-gradient(135deg, rgb(224 182 79 / 0.13) 0 0.26rem, transparent 0.26rem 0.52rem),
+    var(--ticket-100, #f5efdf);
+}
+
+.playing-card[data-wild="true"] .playing-card__keyline {
+  border-style: double;
+  border-width: 0.18rem;
+  opacity: 0.5;
+}
+
+.playing-card[data-playable="false"] {
+  filter: saturate(0.55);
+}
+
+.playing-card[data-grouped="true"] {
+  box-shadow:
+    0 0 0 0.12rem var(--baize-700, #1b4a39),
+    0 0 0 0.27rem var(--brass-300, #f3d98c),
+    0 0.5rem 0.8rem rgb(0 0 0 / 0.38);
+}
+
+.playing-card[data-discard-candidate="true"]::after {
+  position: absolute;
+  inset: auto 0.18rem 0.18rem;
+  border: 1px solid currentcolor;
+  border-radius: 0.22rem;
+  padding: 0.14rem;
+  background: var(--ticket-100, #f5efdf);
+  content: "DISCARD";
+  font-size: 0.5rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.playing-card--invalid,
+.playing-card[data-invalid="true"] {
+  border-style: dashed;
+  border-color: var(--signal-red, #ff746b);
+}
+
+.playing-card__authority {
+  position: absolute;
+  z-index: 4;
+  inset: 50% -0.1rem auto;
+  transform: translateY(-50%);
+  border-block: 0.12rem solid currentcolor;
+  padding: 0.18rem;
+  background: rgb(11 16 14 / 0.9);
+  color: var(--ticket-100, #f5efdf);
+  font-size: 0.52rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.playing-card[data-authority-state="pending"] {
+  border-style: double;
+}
+
+.playing-card[data-authority-state="pending"]::before {
+  position: absolute;
+  z-index: 5;
+  inset: auto 0 0;
+  height: 0.2rem;
+  background: repeating-linear-gradient(90deg, var(--brass-500, #e0b64f) 0 0.6rem, transparent 0.6rem 0.9rem);
+  content: "";
+}
+
+.playing-card[data-authority-state="rejected"] {
+  outline: 0.18rem dashed var(--signal-red, #ff746b);
+  outline-offset: 0.12rem;
+}
+
+.playing-card[data-authority-state="uncertain"] {
+  outline: 0.18rem double var(--signal-blue, #78b4ff);
+  outline-offset: 0.12rem;
+}
+
+.card-back {
+  isolation: isolate;
+  overflow: hidden;
+  border-style: double;
+  background:
+    url("/art/card-back-lattice.v1.svg") center / cover,
+    var(--midnight-950, #0b100e);
+}
+
+.card-back__rails {
+  position: absolute;
+  z-index: 1;
+  inset: 0.62rem 0.5rem;
+  border: 0.16rem double var(--brass-300, #f3d98c);
+  border-radius: 50% 50% 0.35rem 0.35rem;
+  pointer-events: none;
+}
+
+.card-back__monogram {
+  z-index: 2;
+  display: grid;
+  width: 2.1rem;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 0.16rem double var(--brass-300, #f3d98c);
+  border-radius: 50%;
+  background: var(--midnight-950, #0b100e);
+  color: var(--ticket-100, #f5efdf);
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.game-conductor-call {
+  inset: auto max(0.75rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom))
+    max(0.75rem, env(safe-area-inset-left));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: min(42rem, calc(100vw - 1.5rem));
+  align-items: center;
+  gap: 0.1rem 0.75rem;
+  margin-inline: auto;
+  border: 1px solid rgb(224 182 79 / 0.44);
+  border-radius: 0.55rem;
+  padding: 0.55rem;
+  background:
+    linear-gradient(90deg, rgb(224 182 79 / 0.14), transparent 55%),
+    rgb(11 16 14 / 0.96);
+  box-shadow: 0 0.8rem 1.8rem rgb(0 0 0 / 0.55);
+}
+
+.game-conductor-call__label,
+.game-conductor-call__detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-conductor-call__label {
+  color: var(--v11-brass-light);
+  font-size: var(--text-sm, 0.875rem);
+  font-weight: 900;
+}
+
+.game-conductor-call__detail {
+  grid-column: 1;
+  color: var(--v11-ticket-muted);
+  font-size: var(--text-xs, 0.75rem);
+}
+
+.game-conductor-call .action {
+  grid-area: 1 / 2 / 3 / 3;
+  min-width: 7.5rem;
+}
+
+.game-decision-bench {
+  grid-template-rows: auto minmax(0, 1fr);
+  border-block-start: 0.35rem solid var(--brass-500, #e0b64f);
+  border-radius: 1.5rem 1.5rem 0.4rem 0.4rem;
+  padding: 0;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.05), transparent 25%),
+    var(--carriage-900, #121a17);
+}
+
+.game-decision-bench__header {
+  display: grid;
+  gap: 0.35rem;
+  border-block-end: 1px solid rgb(224 182 79 / 0.3);
+  padding: 1rem 1rem 0.8rem;
+}
+
+.game-decision-bench__eyebrow {
+  color: var(--brass-300, #f3d98c);
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.game-decision-bench__body {
+  display: grid;
+  min-height: 0;
+  gap: var(--space-3, 0.75rem);
+  padding: 0.8rem 1rem max(1rem, env(safe-area-inset-bottom));
+  overflow: auto;
+}
+
+.game-decision-bench__body > .action:last-child,
+.game-decision-bench__body > .stack:last-child {
+  position: sticky;
+  z-index: 2;
+  inset-block-end: 0;
+}
+
+@media (min-width: 45rem) {
+  .game-compartment-table {
+    grid-template-areas:
+      "table-head table-head"
+      "seats seats"
+      "scores scores"
+      "melds spine";
+    grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.7fr);
+    align-items: start;
+  }
+
+  .game-seat-perimeter {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .game-table-spine {
+    position: sticky;
+    inset-block-start: 1rem;
+    width: 100%;
+  }
+}
+
+@media (max-width: 29.9375rem) {
+  .game-compartment-table {
+    max-height: none;
+    overflow-y: visible;
+    border-radius: 1.3rem;
+  }
+
+  .game-table__header {
+    grid-template-columns: auto 1fr;
+  }
+
+  .game-table__wild {
+    grid-column: 1 / -1;
+    text-align: start;
+  }
+
+  .game-seat-perimeter {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .game-seat-perimeter .player-chip:nth-child(n + 5) {
+    border-radius: 0.35rem;
+  }
+
+  .game-conductor-call__detail {
+    display: none;
+  }
+
+  .game-conductor-call .action {
+    grid-row: 1;
+  }
+
+  .game-decision-bench {
+    display: block;
+    inset: max(4px, env(safe-area-inset-top))
+      max(4px, env(safe-area-inset-right))
+      max(4px, env(safe-area-inset-bottom))
+      max(4px, env(safe-area-inset-left));
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top)) - max(8px, env(safe-area-inset-bottom)));
+    overflow: auto;
+  }
+
+  .game-decision-bench__body {
+    gap: min(var(--space-3, 0.75rem), 12px);
+    padding: 13px 16px max(16px, env(safe-area-inset-bottom));
+    overflow: visible;
+  }
+
+  .game-decision-bench__body > .action:last-child,
+  .game-decision-bench__body > .stack:last-child {
+    position: static;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-private-hand--foreground .hand-tray__item,
+  .playing-card,
+  .playing-card::before {
+    animation: none;
+    transform: none;
+    transition-duration: 0.001ms;
+  }
+}
+
+html[data-motion="reduced"] .game-private-hand--foreground .hand-tray__item,
+html[data-motion="reduced"] .playing-card,
+html[data-motion="reduced"] .playing-card::before {
+  animation: none;
+  transform: none;
+  transition-duration: 0.001ms;
+}
+
+@media (forced-colors: active) {
+  .game-workspace--compartment::before,
+  .game-compartment-table::before,
+  .game-compartment-table::after,
+  .game-table-spine::before {
+    display: none;
+  }
+
+  .game-compartment-table,
+  .game-private-hand--foreground,
+  .game-network-rail,
+  .game-conductor-call,
+  .game-decision-bench,
+  .game-pile,
+  .game-meld {
+    border: 2px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    forced-color-adjust: auto;
+  }
+
+  .playing-card,
+  .card-back,
+  .game-meld-card {
+    border: 2px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .playing-card[data-wild="true"],
+  .playing-card[data-authority-state="pending"] {
+    border-style: double;
+  }
+
+  .playing-card[data-invalid="true"],
+  .playing-card[data-authority-state="rejected"] {
+    border-style: dashed;
+  }
+
+  .playing-card[data-authority-state="uncertain"] {
+    outline: 0.2rem double Highlight;
+  }
+}

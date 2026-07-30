@@ -9,8 +9,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#0b0d0e",
-  "theme_color": "#0b0d0e",
+  "background_color": "#07090b",
+  "theme_color": "#07090b",
   "categories": ["games", "entertainment"],
   "icons": [
     {

@@ -1,7 +1,10 @@
 # GitHub Pages Online Beta
 
-**Status:** Restricted beta provider key configured; hosted beta validation is
-in progress and live-phone evidence remains an external gate  
+**Status:** Beta test complete and table direction signed off; application
+promoted to version 1.0.0. A hosted release still requires an immutable source
+revision and successful deployment evidence.  
+**Promotion authority:** Owner statement in the controlling Codex task,
+30 July 2026  
 **Target:** <https://alexbrasier451-tech.github.io/Crazy-Rummy/>
 
 ## Source and deployment boundary
@@ -62,9 +65,11 @@ Then set `CRAZY_RUMMY_ONLINE_ENABLED=false`, rebuild, and redeploy. Provider
 revocation is immediate for existing cached clients; the rebuilt kill switch
 takes effect after the installed PWA accepts its update.
 
-## Beta entry check
+## Completed beta entry check
 
-Before inviting phone testers:
+The beta test authorisation confirms this gate is complete. Retain the
+following checklist as the evidence contract for any repeat or release
+candidate deployment:
 
 1. Confirm CI and Pages artifact verification are green.
 2. Open the target URL and install/reload the PWA.

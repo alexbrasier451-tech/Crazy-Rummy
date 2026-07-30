@@ -22,10 +22,22 @@ import { onlineGameState } from "./online-game.js";
 import {
   bulletList,
   copy,
+  element,
   panel,
   screenWithMenu,
   stack
 } from "./helpers.js";
+
+function authoredPanel(title, className, ...content) {
+  const node = panel(title, ...content);
+  node.classList.add(className);
+  return node;
+}
+
+function authoredNode(node, className) {
+  node?.classList?.add(className);
+  return node;
+}
 
 function seatName(snapshot, seatId) {
   return snapshot?.view?.seats?.[seatId]?.displayName
@@ -59,16 +71,25 @@ function unavailableResultScreen({ final = false, navigate, router, online = fal
         : "The local engine has not produced this result yet."
     ),
     content: [
-      stack(
-        actionButton({
-          label: online ? "Return to the online game" : "Return to the local game",
-          onActivate: () => navigate("/game")
-        }),
-        actionButton({
-          label: "Return to Lobby",
-          variant: "quiet",
-          onActivate: () => returnToLobby(navigate, onReturnToLobby)
-        })
+      authoredPanel(
+        final ? "No terminal ticket" : "No accepted score ticket",
+        "result-unavailable-ticket",
+        copy(
+          final
+            ? "No standings have been invented. Return to a safe route and wait for an accepted terminal result."
+            : "No score has been invented. Return to the table for the accepted hand state."
+        ),
+        stack(
+          actionButton({
+            label: online ? "Return to the online game" : "Return to the local game",
+            onActivate: () => navigate("/game")
+          }),
+          actionButton({
+            label: "Return to Lobby",
+            variant: "quiet",
+            onActivate: () => returnToLobby(navigate, onReturnToLobby)
+          })
+        )
       )
     ],
     router,
@@ -311,6 +332,18 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
     onActivate: continueMatch
   });
 
+  const acceptedScores = authoredNode(scoreStrip({
+    label: `Accepted scores for hand ${handIndex}`,
+    activePlayerId: result.winnerSeatId,
+    scores: scoreRows
+  }), "result-score-ticket");
+  const handRoute = authoredNode(routeLine({
+    current: handIndex,
+    total: state.rules.handCount,
+    label: `Hand ${handIndex} of ${state.rules.handCount}`,
+    compact: true
+  }), "result-route-ledger");
+
   const reconcileOnlineSnapshot = (next) => {
     const nextPresentation = onlineGameState(next);
     onlineBlocked = Boolean(nextPresentation.disabled);
@@ -333,28 +366,21 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
     status,
     content: [
       networkNode,
-      scoreStrip({
-        label: `Accepted scores for hand ${handIndex}`,
-        activePlayerId: result.winnerSeatId,
-        scores: scoreRows
-      }),
+      handRoute,
+      acceptedScores,
       copy("Lower totals are better. The accepted hand score and running total are shown separately."),
-      ownBreakdown ? panel(
+      ownBreakdown ? authoredPanel(
         "Your remaining-card score",
+        "result-private-ticket",
         ownBreakdown.cards.length
           ? bulletList(ownBreakdown.cards.map((card) => `${cardDisplayName(card.cardId)}: ${card.value}`))
           : copy("No cards remained in your hand. Penalty: 0."),
         copy(`Your hand penalty: ${ownBreakdown.total}.`)
       ) : null,
-      routeLine({
-        current: handIndex,
-        total: state.rules.handCount,
-        label: `Hand ${handIndex} of ${state.rules.handCount}`,
-        compact: true
-      }),
-      preview ? panel("Next hand", copy(nextHandCopy(preview, snapshot))) : null,
-      panel(
+      preview ? authoredPanel("Next hand", "result-next-ticket", copy(nextHandCopy(preview, snapshot))) : null,
+      authoredPanel(
         "Continue the match",
+        "result-action-ticket",
         copy(
           isOnline
             ? "Each active player acknowledges only their own result. The host starts the next hand after everyone is ready."
@@ -382,6 +408,7 @@ export function handResultScreen({ navigate, router, localSession, onlineGameSes
     router,
     menuContent: [actionButton({ label: "Return to Lobby", variant: "secondary", onActivate: () => returnToLobby(navigate, onReturnToLobby) })]
   });
+  shell.dataset.resultState = "accepted-hand";
   const unsubscribe = isOnline
     ? session.subscribe?.(reconcileOnlineSnapshot) ?? (() => {})
     : () => {};
@@ -481,33 +508,42 @@ export function finalResultScreen({
     ?? state.hand?.index
     ?? Math.max(1, history.length);
 
+  const finalRoute = authoredNode(routeLine({
+    current: state.completion?.reason === "FORFEIT" ? forfeitHandIndex : state.rules.handCount,
+    total: state.rules.handCount,
+    label: state.completion?.reason === "FORFEIT"
+      ? `Match ended during hand ${forfeitHandIndex} after ${history.length} accepted hand ${history.length === 1 ? "result" : "results"}`
+      : `Hand ${state.rules.handCount} of ${state.rules.handCount}`,
+    compact: true
+  }), "result-route-ledger");
+  const finalStandings = authoredNode(scoreStrip({
+    label: "Accepted final standings",
+    scores: standings
+  }), "result-terminus-standings");
+
   const shell = screenWithMenu({
     id: "final-result",
     context: presentation.context,
     title: presentation.title,
     status,
     content: [
-      routeLine({
-        current: state.completion?.reason === "FORFEIT" ? forfeitHandIndex : state.rules.handCount,
-        total: state.rules.handCount,
-        label: state.completion?.reason === "FORFEIT"
-          ? `Match ended during hand ${forfeitHandIndex} after ${history.length} accepted hand ${history.length === 1 ? "result" : "results"}`
-          : `Hand ${state.rules.handCount} of ${state.rules.handCount}`,
-        compact: true
+      element("p", {
+        className: "result-terminus-label",
+        text: presentation.kind === "forfeit" ? "Journey closed early" : "Terminus reached"
       }),
-      scoreStrip({
-        label: "Accepted final standings",
-        scores: standings
-      }),
-      panel(
+      finalRoute,
+      finalStandings,
+      authoredPanel(
         "Hand-by-hand results",
+        "result-history-ticket",
         copy(presentation.kind === "forfeit"
           ? "Only accepted hand results before the forfeit are listed."
           : "Each hand shows its public penalty for every participant."),
         bulletList(historyCopy(history), { ordered: true })
       ),
-      panel(
+      authoredPanel(
         "Result actions",
+        "result-action-ticket",
         copy(
           isOnline
             ? "The shared result excludes private card history."
@@ -531,6 +567,7 @@ export function finalResultScreen({
     router,
     menuContent: [actionButton({ label: "Return to Lobby", variant: "secondary", onActivate: () => returnToLobby(navigate, onReturnToLobby) })]
   });
+  shell.dataset.resultState = presentation.kind;
   const disposeFeedback = startResultFeedback(shell, localSession, "match-complete");
   shell.disposeScreen = disposeFeedback;
   return shell;

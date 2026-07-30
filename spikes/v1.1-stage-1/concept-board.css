@@ -1,0 +1,461 @@
+:root {
+  color-scheme: dark;
+  --void: #07090b;
+  --enamel: #121a17;
+  --baize: #123b2d;
+  --baize-lift: #1b4a39;
+  --ticket: #f5efdf;
+  --muted: #c6bdaa;
+  --brass: #e0b64f;
+  --green: #3de0a5;
+  --red: #ff746b;
+  --ink: #0b100e;
+  --line: rgb(245 239 223 / .25);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { min-width: 0; margin: 0; background: var(--void); color: var(--ticket); }
+button, select { font: inherit; }
+button { min-height: 44px; border: 1px solid var(--brass); border-radius: 10px; padding: .65rem .9rem; background: var(--brass); color: var(--ink); font-weight: 800; }
+button:disabled { border-style: dashed; opacity: .48; }
+button:focus-visible, select:focus-visible { outline: 3px solid var(--ticket); outline-offset: 3px; }
+
+#stage-one-board { width: min(100%, 960px); min-width: 0; margin: auto; padding: clamp(12px, 3vw, 28px); overflow: clip; }
+.board-header { display: grid; gap: 8px; max-width: 58rem; margin-block-end: 16px; }
+.board-header h1, .screen-title, .section-title { margin: 0; font-family: "Arial Narrow", Impact, sans-serif; letter-spacing: .035em; }
+.board-header h1 { font-size: clamp(2rem, 8vw, 4rem); }
+.board-header p { max-width: 62ch; margin: 0; color: var(--muted); }
+.board-kicker, .eyebrow { color: var(--brass) !important; font-size: .75rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+
+.board-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: 8px; margin-block: 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--enamel); }
+.board-control { display: grid; gap: 4px; color: var(--muted); font-size: .78rem; font-weight: 800; }
+.board-control select { width: 100%; min-width: 0; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: .4rem; background: var(--void); color: var(--ticket); }
+
+.fixture-plate { margin-block: 16px; border-inline-start: 4px solid var(--brass); padding: 12px; background: rgb(224 182 79 / .09); color: var(--ticket); font-size: .8rem; }
+.fixture-plate dl { display: grid; grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr); gap: 5px 12px; margin: 0; }
+.fixture-plate dt { color: var(--brass); font-weight: 800; }
+.fixture-plate dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+
+.board-scene { position: relative; min-width: 0; overflow: clip; border: 1px solid var(--line); border-radius: 18px; background: var(--enamel); box-shadow: 0 18px 42px rgb(0 0 0 / .35); }
+.concept-layout { display: grid; min-width: 0; gap: 16px; padding: clamp(14px, 4vw, 28px); }
+.screen-intro { display: grid; gap: 8px; min-width: 0; }
+.screen-intro p, .screen-intro h1 { margin: 0; }
+.screen-title { font-size: clamp(2rem, 8vw, 3.6rem); }
+.screen-copy { max-width: 55ch; color: var(--muted); }
+.board-status { display: grid; width: fit-content; max-width: 100%; gap: 2px; margin: 0; border-inline-start: 4px solid var(--green); padding: 7px 10px; background: rgb(61 224 165 / .1); overflow-wrap: anywhere; }
+.board-status--offline { border-color: var(--red); background: rgb(255 116 107 / .1); }
+.board-status span { color: var(--muted); font-size: .82rem; }
+.section-title { font-size: 1.35rem; }
+.lobby-tables, .timetable-seats, .compartment-seats, .atlas-seats, .private-hand__cards { min-width: 0; margin: 0; padding: 0; list-style: none; }
+.lobby-table, .seat, .public-meld { min-width: 0; overflow-wrap: anywhere; }
+.lobby-table strong, .seat strong, .seat span, .seat small { display: block; }
+.lobby-table span, .lobby-table small, .seat span, .seat small { color: var(--muted); }
+.lobby-empty { display: grid; gap: 10px; border: 1px dashed var(--line); padding: 16px; background: rgb(7 9 11 / .34); }
+.lobby-empty p { max-width: 48ch; margin: 0; color: var(--muted); }
+.lobby-empty button { width: fit-content; }
+.private-hand, .public-table, .table-actions { min-width: 0; }
+.private-hand { border: 1px solid var(--line); padding: 12px; background: linear-gradient(150deg, rgb(245 239 223 / .07), transparent 36%), var(--enamel); }
+.private-hand__heading { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+.private-hand__heading h2, .private-hand__heading p, .public-table h2, .public-table p { margin: 0; }
+.private-hand__heading p, .public-table__meta { color: var(--muted); font-size: .82rem; }
+.private-hand__cards { display: flex; gap: 5px; margin-block-start: 12px; overflow-x: auto; padding-block-end: 4px; }
+.concept-card { display: grid; width: 48px; min-width: 48px; height: 68px; place-items: center; border: 1px solid #d5cdbf; border-radius: 6px; background: var(--ticket); color: #111411; font-weight: 900; box-shadow: 0 4px 10px rgb(0 0 0 / .26); }
+.concept-card--red { color: #a82936; }
+.public-table { display: grid; gap: 10px; border: 1px solid rgb(245 239 223 / .22); padding: 14px; background: radial-gradient(circle at 50% 20%, rgb(61 224 165 / .12), transparent 46%), var(--baize); }
+.public-table__piles { display: flex; gap: 10px; align-items: center; }
+.mini-card { display: grid; width: 50px; min-width: 50px; height: 68px; place-items: center; border: 1px solid #d5cdbf; border-radius: 6px; background: var(--ticket); color: #111411; font-size: .92rem; font-weight: 900; line-height: 1; text-align: center; box-shadow: 0 4px 10px rgb(0 0 0 / .24); }
+.mini-card small { display: block; font-size: .48rem; letter-spacing: .05em; }
+.mini-card--back { border: 3px double var(--brass); background: repeating-linear-gradient(45deg, #0b100e 0 5px, #1b4a39 5px 9px, #e0b64f 9px 10px); color: var(--ticket); }
+.mini-card--discard { color: var(--ink); }
+.mini-card--discard strong { font-size: 1.45rem; }
+.public-melds { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: 8px; }
+.public-meld { border: 1px solid rgb(245 239 223 / .32); padding: 9px; background: rgb(7 9 11 / .32); }
+.public-meld h3 { margin: 0; font-size: .78rem; }
+.public-meld__cards { display: flex; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; }
+.mini-card--meld { width: 38px; min-width: 38px; height: 50px; font-size: .69rem; }
+.mini-card--wild { width: 55px; min-width: 55px; border: 3px double var(--brass); background: repeating-linear-gradient(135deg, var(--ticket) 0 4px, #e0b64f 4px 5px); }
+.table-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.table-actions__secondary { border-color: var(--line); background: transparent; color: var(--ticket); }
+
+/* A: a vertical information system; status reads as a physical service board. */
+.concept-layout--timetable { background: linear-gradient(180deg, rgb(224 182 79 / .12), transparent 18rem), var(--void); }
+.timetable-board, .timetable-game-board { display: grid; gap: 12px; border: 1px solid var(--brass); padding: 14px; background: #0c1210; }
+.timetable-board .lobby-tables { display: grid; gap: 1px; border-block: 1px solid var(--line); }
+.timetable-board .lobby-table { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 4px; border-block-end: 1px dashed var(--line); }
+.timetable-board .lobby-table small { grid-column: 1 / -1; color: var(--brass); }
+.timetable-note { border-inline-start: 2px solid var(--brass); padding-inline-start: 12px; color: var(--muted); }
+.timetable-note p { margin-block-end: 0; }
+.timetable-seats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+.timetable-seats .seat { padding: 9px; background: var(--enamel); }
+.timetable-seats .seat--local { box-shadow: inset 4px 0 var(--brass); }
+.timetable-game-board .public-table { border-color: var(--brass); }
+
+/* B: central table plus adaptive perimeter. This is the recommended controller direction. */
+.concept-layout--compartment { background: radial-gradient(ellipse at 50% 42%, rgb(61 224 165 / .16), transparent 42%), var(--void); }
+.compartment-lobby-core { display: grid; gap: 12px; border: 1px solid var(--brass); border-radius: 16px; padding: 18px; background: linear-gradient(145deg, rgb(245 239 223 / .1), transparent 40%), var(--baize); }
+.compartment-lobby-core > p, .compartment-lobby-note p { margin: 0; color: var(--muted); }
+.paired-ticket-gate { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.compartment-primary { justify-self: stretch; }
+.compartment-lobby-core .lobby-tables { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.compartment-lobby-core .lobby-table { display: grid; gap: 3px; border: 1px solid var(--line); padding: 10px; background: rgb(7 9 11 / .42); }
+.compartment-lobby-note { padding: 12px; border: 1px solid var(--line); background: var(--enamel); }
+.compartment-table { position: relative; display: grid; min-height: 470px; place-items: center; border: 1px solid var(--brass); border-radius: 50%; padding: 84px 48px; background: radial-gradient(ellipse, var(--baize-lift), var(--baize) 50%, var(--void) 70%); }
+.compartment-table > .section-title { position: absolute; inset: 18px auto auto 50%; transform: translateX(-50%); white-space: nowrap; }
+.compartment-seats { position: absolute; inset: 58px 14px 16px; }
+.compartment-seats .seat { position: absolute; width: 90px; border: 1px solid var(--line); padding: 6px; background: var(--enamel); font-size: .76rem; text-align: center; }
+.compartment-seats .seat--local { border-color: var(--brass); box-shadow: 0 0 0 2px rgb(224 182 79 / .2); }
+.compartment-seats .seat:nth-child(1) { inset: auto 50% 0; transform: translateX(-50%); }
+.compartment-seats .seat:nth-child(2) { inset: 43% 0 auto auto; }
+.compartment-seats .seat:nth-child(3) { inset: 2% 16% auto auto; }
+.compartment-seats .seat:nth-child(4) { inset: 2% auto auto 16%; }
+.compartment-seats .seat:nth-child(5) { inset: 43% auto auto 0; }
+.compartment-seats .seat:nth-child(6) { inset: 73% auto auto 10%; }
+.compartment-table .public-table { width: min(100%, 310px); border-radius: 18px; }
+
+/* C: route geometry and station cards, structurally distinct from a timetable or table. */
+.concept-layout--atlas { background: linear-gradient(135deg, rgb(120 180 255 / .12), transparent 40%), var(--void); }
+.atlas-map, .atlas-game-map { display: grid; gap: 14px; min-width: 0; border: 1px solid #78b4ff; padding: 16px; background: linear-gradient(150deg, rgb(120 180 255 / .1), transparent 48%), #091210; }
+.atlas-line { display: flex; align-items: center; justify-content: space-between; height: 40px; border-block-start: 2px solid #78b4ff; }
+.atlas-line span { width: 16px; height: 16px; border: 3px solid #78b4ff; border-radius: 50%; background: var(--void); transform: translateY(-9px); }
+.atlas-map .lobby-tables { display: grid; gap: 10px; }
+.atlas-map .lobby-table { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; border-inline-start: 5px solid #78b4ff; padding: 10px; background: rgb(120 180 255 / .08); }
+.atlas-map .lobby-table::before { content: "●"; color: #78b4ff; }
+.atlas-map .lobby-table small { grid-column: 2 / -1; }
+.atlas-legend { border: 1px dashed #78b4ff; padding: 12px; color: var(--muted); }
+.atlas-legend p { margin-block-end: 0; }
+.atlas-game-map { grid-template-columns: minmax(0, 1fr); }
+.atlas-seats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.atlas-seats .seat { position: relative; border: 1px solid #78b4ff; padding: 8px; background: rgb(120 180 255 / .09); }
+.atlas-seats .seat::before { position: absolute; inset: -6px auto auto -6px; width: 12px; height: 12px; border: 2px solid #78b4ff; border-radius: 50%; background: var(--void); content: ""; }
+.atlas-seats .seat--local { border-color: var(--brass); }
+.atlas-game-map .public-table { border-color: #78b4ff; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Export mode has a fixed canvas but retains the provenance record inside it. */
+body:has(#stage-one-board[data-capture="keyframe"]) { overflow: hidden; }
+#stage-one-board[data-capture="keyframe"] { display: grid; width: 100vw; height: 100vh; min-height: 0; margin: 0; padding: 8px; grid-template-rows: auto minmax(0, 1fr); gap: 8px; overflow: hidden; }
+#stage-one-board[data-capture="keyframe"] .board-header,
+#stage-one-board[data-capture="keyframe"] .board-controls { display: none; }
+#stage-one-board[data-capture="keyframe"] .fixture-plate { margin: 0; border-inline-start-width: 3px; padding: 5px 7px; font-size: .58rem; line-height: 1.1; }
+#stage-one-board[data-capture="keyframe"] .fixture-plate--capture { display: grid; gap: 1px; }
+#stage-one-board[data-capture="keyframe"] .fixture-plate--capture p { margin: 0; overflow-wrap: anywhere; }
+#stage-one-board[data-capture="keyframe"] .board-scene { min-height: 0; height: 100%; border-radius: 12px; }
+#stage-one-board[data-capture="keyframe"] .concept-layout { height: 100%; min-height: 0; gap: 7px; padding: 8px; overflow: hidden; align-content: start; }
+#stage-one-board[data-capture="keyframe"] .screen-title { font-size: clamp(1.55rem, 7vw, 2.4rem); }
+#stage-one-board[data-capture="keyframe"] .screen-intro { gap: 4px; }
+#stage-one-board[data-capture="keyframe"] .screen-copy { font-size: .86rem; }
+#stage-one-board[data-capture="keyframe"] .private-hand { padding: 7px; }
+#stage-one-board[data-capture="keyframe"] .private-hand__cards { margin-block-start: 6px; }
+#stage-one-board[data-capture="keyframe"] .concept-card { width: 36px; min-width: 36px; height: 50px; font-size: .78rem; }
+#stage-one-board[data-capture="keyframe"] .compartment-table { min-height: 0; }
+#stage-one-board[data-capture="keyframe"] .compartment-table .public-table { width: min(100%, 270px); }
+
+/* 320 compact: B swaps its six-seat perimeter for an ordered public rail. */
+@media (max-width: 359px) {
+  #stage-one-board { padding: 10px; }
+  .fixture-plate dl { grid-template-columns: minmax(0, 1fr); gap: 1px; }
+  .fixture-plate dt { margin-block-start: 6px; }
+  .compartment-lobby-core .lobby-tables { grid-template-columns: minmax(0, 1fr); }
+  .compartment-table { min-height: 0; place-items: stretch; border-radius: 14px; padding: 14px; }
+  .compartment-table > .section-title { position: static; transform: none; white-space: normal; }
+  .compartment-seats { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; order: 3; }
+  .compartment-seats .seat { position: static; width: auto; text-align: start; transform: none !important; }
+  .compartment-table .public-table { width: 100%; order: 2; }
+  .atlas-seats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* 390 approval composition retains B's clear compact perimeter. */
+@media (min-width: 360px) and (max-width: 719px) {
+  .concept-layout--compartment.concept-layout--game { gap: 14px; }
+  .compartment-table { min-height: 440px; }
+}
+
+/* 768: the compartment opens into a two-column reading order without changing semantics. */
+@media (min-width: 720px) {
+  .concept-layout--compartment.concept-layout--lobby { grid-template-columns: minmax(0, 1.65fr) minmax(14rem, .8fr); align-items: start; }
+  .concept-layout--compartment.concept-layout--lobby .screen-intro { grid-column: 1 / -1; }
+  .concept-layout--compartment.concept-layout--game { grid-template-columns: minmax(0, 1.35fr) minmax(18rem, .8fr); align-items: start; }
+  .concept-layout--compartment.concept-layout--game .screen-intro { grid-column: 1 / -1; }
+  .concept-layout--compartment.concept-layout--game .compartment-table { grid-row: 2 / span 2; }
+  .concept-layout--compartment.concept-layout--game .table-actions { grid-column: 2; }
+  .concept-layout--timetable.concept-layout--game, .concept-layout--atlas.concept-layout--game { grid-template-columns: minmax(0, 1.25fr) minmax(18rem, .75fr); }
+  .concept-layout--timetable.concept-layout--game .screen-intro, .concept-layout--atlas.concept-layout--game .screen-intro { grid-column: 1 / -1; }
+  .concept-layout--timetable.concept-layout--game .timetable-game-board, .concept-layout--atlas.concept-layout--game .atlas-game-map { grid-row: 2 / span 2; }
+}
+
+/* Concept representation: it visibly changes motion treatment without asserting runtime accessibility evidence. */
+#stage-one-board[data-motion="full"] .compartment-table { animation: stage1-arrive 700ms ease-out both; }
+#stage-one-board[data-motion="full"] .concept-card:nth-child(odd) { animation: stage1-card-settle 420ms ease-out both; }
+@keyframes stage1-arrive { from { opacity: .45; transform: translateY(16px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes stage1-card-settle { from { opacity: .5; transform: translateY(-8px) rotate(-2deg); } to { opacity: 1; transform: none; } }
+#stage-one-board[data-motion="reduced"] * { animation-duration: 1ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 1ms !important; }
+@media (prefers-reduced-motion: reduce) {
+  #stage-one-board * { animation-duration: 1ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 1ms !important; }
+}
+
+/* Forced-colour representation: material is replaced by system-colour hierarchy and named labels remain. */
+#stage-one-board[data-colour="forced"] { --void: Canvas; --enamel: Canvas; --baize: Canvas; --baize-lift: Canvas; --ticket: CanvasText; --muted: CanvasText; --brass: Highlight; --green: Highlight; --red: CanvasText; --ink: HighlightText; --line: CanvasText; color-scheme: light dark; }
+#stage-one-board[data-colour="forced"] .board-scene, #stage-one-board[data-colour="forced"] .compartment-table { background: Canvas; box-shadow: none; }
+#stage-one-board[data-colour="forced"] .atlas-map, #stage-one-board[data-colour="forced"] .atlas-game-map { border-color: CanvasText; background: Canvas; }
+#stage-one-board[data-colour="forced"] .atlas-line { border-color: CanvasText; }
+#stage-one-board[data-colour="forced"] .atlas-line span, #stage-one-board[data-colour="forced"] .atlas-seats .seat::before { border-color: CanvasText; background: Canvas; }
+#stage-one-board[data-colour="forced"] .concept-card { background: Canvas; color: CanvasText; }
+#stage-one-board[data-colour="forced"] button { background: Highlight; color: HighlightText; }
+
+@media (forced-colors: active) {
+  #stage-one-board { color: CanvasText; background: Canvas; }
+  .board-scene, .board-controls, .fixture-plate, .private-hand, .public-table, .compartment-table, .atlas-map, .atlas-game-map, .timetable-board, .timetable-game-board, .lobby-table, .seat, .public-meld { border: 2px solid CanvasText !important; background: Canvas !important; box-shadow: none !important; color: CanvasText !important; }
+  .board-header p, .screen-copy, .board-control, .lobby-table span, .lobby-table small, .seat span, .seat small, .private-hand__heading p, .public-table__meta, .board-status span { color: CanvasText !important; }
+  .board-kicker, .eyebrow, .fixture-plate dt { color: LinkText !important; }
+  .board-status { border-inline-start-color: Highlight !important; background: Canvas !important; }
+  .concept-card { border: 2px solid CanvasText; background: Canvas; color: CanvasText; }
+  .atlas-line, .atlas-line span, .atlas-seats .seat::before { border-color: CanvasText !important; }
+  button {
+    appearance: none;
+    border: 2px solid CanvasText !important;
+    background: Canvas !important;
+    color: CanvasText !important;
+  }
+  .table-actions button:first-child,
+  .paired-ticket-gate button:first-child { border: 4px double Highlight !important; }
+}
+
+/* The exported phone keyframe is a composed still, not a scroll position. */
+@media (max-width: 719px) {
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment.concept-layout--game {
+    grid-template-rows: auto auto auto auto;
+    gap: 6px;
+  }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .screen-copy { display: none; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .eyebrow { font-size: .58rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .board-status { display: flex; gap: 5px; padding: 4px 6px; font-size: .68rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .board-status span { font-size: inherit; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-table {
+    display: grid;
+    min-height: 0;
+    place-items: stretch;
+    border-radius: 12px;
+    padding: 7px;
+    background: radial-gradient(ellipse at 50% 42%, rgb(61 224 165 / .16), transparent 58%), var(--baize);
+  }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-table > .section-title {
+    position: static;
+    margin: 0;
+    font-size: .86rem;
+    transform: none;
+    white-space: normal;
+  }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+    margin-block: 5px;
+  }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat {
+    position: static;
+    width: auto;
+    min-height: 0;
+    padding: 3px;
+    font-size: .55rem;
+    line-height: 1.05;
+    transform: none !important;
+  }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat strong,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat span,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat small { display: inline; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat span::before,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat small::before { content: " · "; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .public-table {
+    gap: 4px;
+    width: 100%;
+    padding: 6px;
+    border-radius: 8px;
+  }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .public-table__title { font-size: .76rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .public-table__meta { display: none; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .public-table__piles { gap: 5px; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .mini-card { width: 34px; min-width: 34px; height: 43px; font-size: .7rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .mini-card--meld { width: 31px; min-width: 31px; height: 40px; font-size: .56rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .mini-card--wild { width: 47px; min-width: 47px; font-size: .53rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .public-melds { display: block; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .public-meld { padding: 4px; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .public-meld h3 { font-size: .63rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .public-meld__cards { margin-block-start: 3px; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .private-hand__heading { gap: 4px; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .private-hand__heading h2 { font-size: .78rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .private-hand__heading p { font-size: .62rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .private-hand__cards { gap: 2px; margin-block-start: 4px; overflow: hidden; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .concept-card { width: 34px; min-width: 34px; height: 46px; font-size: .66rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .table-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .table-actions button { min-height: 44px; padding: 4px; font-size: .67rem; }
+
+  /* The two rejected concepts use the same complete still-frame discipline. */
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable.concept-layout--game,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas.concept-layout--game { grid-template-rows: auto auto auto auto; gap: 6px; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .screen-copy,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .screen-copy { display: none; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .eyebrow,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .eyebrow { font-size: .58rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .board-status,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .board-status { display: flex; gap: 5px; padding: 4px 6px; font-size: .68rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .board-status span,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .board-status span { font-size: inherit; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map { display: grid; gap: 4px; min-height: 0; padding: 7px; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .section-title,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .section-title { font-size: .86rem; }
+  #stage-one-board[data-capture="keyframe"] .timetable-seats,
+  #stage-one-board[data-capture="keyframe"] .atlas-seats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; margin-block: 1px; }
+  #stage-one-board[data-capture="keyframe"] .timetable-seats .seat,
+  #stage-one-board[data-capture="keyframe"] .atlas-seats .seat { min-height: 0; padding: 3px; font-size: .55rem; line-height: 1.05; }
+  #stage-one-board[data-capture="keyframe"] .timetable-seats .seat strong,
+  #stage-one-board[data-capture="keyframe"] .timetable-seats .seat span,
+  #stage-one-board[data-capture="keyframe"] .timetable-seats .seat small,
+  #stage-one-board[data-capture="keyframe"] .atlas-seats .seat strong,
+  #stage-one-board[data-capture="keyframe"] .atlas-seats .seat span,
+  #stage-one-board[data-capture="keyframe"] .atlas-seats .seat small { display: inline; }
+  #stage-one-board[data-capture="keyframe"] .timetable-seats .seat span::before,
+  #stage-one-board[data-capture="keyframe"] .timetable-seats .seat small::before,
+  #stage-one-board[data-capture="keyframe"] .atlas-seats .seat span::before,
+  #stage-one-board[data-capture="keyframe"] .atlas-seats .seat small::before { content: " · "; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .public-table,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .public-table { gap: 4px; width: 100%; padding: 6px; border-radius: 8px; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .public-table__title,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .public-table__title { font-size: .76rem; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .public-table__meta,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .public-table__meta { display: none; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .public-table__piles,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .public-table__piles { gap: 5px; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .mini-card,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .mini-card { width: 34px; min-width: 34px; height: 43px; font-size: .7rem; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .mini-card--meld,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .mini-card--meld { width: 31px; min-width: 31px; height: 40px; font-size: .56rem; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .mini-card--wild,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .mini-card--wild { width: 47px; min-width: 47px; font-size: .53rem; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .public-melds,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .public-melds { display: block; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .public-meld,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .public-meld { padding: 4px; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .public-meld h3,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .public-meld h3 { font-size: .63rem; }
+  #stage-one-board[data-capture="keyframe"] .timetable-game-board .public-meld__cards,
+  #stage-one-board[data-capture="keyframe"] .atlas-game-map .public-meld__cards { margin-block-start: 3px; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .private-hand__heading,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .private-hand__heading { gap: 4px; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .private-hand__heading h2,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .private-hand__heading h2 { font-size: .78rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .private-hand__heading p,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .private-hand__heading p { font-size: .62rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .private-hand__cards,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .private-hand__cards { gap: 2px; margin-block-start: 4px; overflow: hidden; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .concept-card,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .concept-card { width: 34px; min-width: 34px; height: 46px; font-size: .66rem; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .table-actions,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .table-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  #stage-one-board[data-capture="keyframe"] .concept-layout--timetable .table-actions button,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--atlas .table-actions button { min-height: 44px; padding: 4px; font-size: .67rem; }
+}
+
+/* The 390 approval frame restores B's defining perimeter instead of presenting
+   the compact 320 public rail as the selected composition. */
+@media (min-width: 360px) and (max-width: 719px) {
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment.concept-layout--lobby .compartment-lobby-core .lobby-tables {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment.concept-layout--game {
+    grid-template-rows: auto 360px auto auto;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-table {
+    position: relative;
+    display: grid;
+    min-height: 360px;
+    place-items: center;
+    border-radius: 50%;
+    padding: 86px 54px 62px;
+    background: radial-gradient(ellipse, var(--baize-lift), var(--baize) 54%, var(--void) 76%);
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-table > .section-title {
+    position: absolute;
+    inset: 12px auto auto 50%;
+    font-size: .9rem;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats {
+    position: absolute;
+    inset: 38px 8px 10px;
+    display: block;
+    margin: 0;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat {
+    position: absolute;
+    width: 72px;
+    min-height: 0;
+    padding: 4px;
+    font-size: .52rem;
+    line-height: 1.05;
+    text-align: center;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat span,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat small {
+    display: block;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat span::before,
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat small::before {
+    content: "";
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat:nth-child(1) {
+    inset: auto 50% 0;
+    transform: translateX(-50%) !important;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat:nth-child(2) {
+    inset: 43% 0 auto auto;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat:nth-child(3) {
+    inset: 0 12% auto auto;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat:nth-child(4) {
+    inset: 0 auto auto 12%;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat:nth-child(5) {
+    inset: 43% auto auto 0;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-seats .seat:nth-child(6) {
+    inset: auto auto 7% 9%;
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-table .public-table {
+    width: 202px;
+    padding: 6px;
+  }
+}
+
+@media (min-width: 720px) {
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .compartment-table .public-table {
+    width: 240px;
+    padding: 9px;
+    transform: translateY(34px);
+  }
+
+  #stage-one-board[data-capture="keyframe"] .concept-layout--compartment .private-hand__cards {
+    display: grid;
+    grid-template-columns: repeat(4, 48px);
+    overflow: visible;
+  }
+}

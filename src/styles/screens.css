@@ -1495,8 +1495,12 @@
   }
 
   .game-sheet {
-    inset-inline: max(0.5rem, env(safe-area-inset-left));
+    inset-inline: max(8px, env(safe-area-inset-left));
+    inset-block-end: max(4px, env(safe-area-inset-bottom));
     width: auto;
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top)) - max(4px, env(safe-area-inset-bottom)));
+    gap: min(var(--space-3), 12px);
+    padding: min(var(--space-4), 16px);
   }
 
   .game-turn-prompt {

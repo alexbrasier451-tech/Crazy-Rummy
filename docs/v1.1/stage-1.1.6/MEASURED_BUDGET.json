@@ -1,0 +1,32 @@
+{
+  "measuredAt": "2026-07-30",
+  "generator": "tools/report-v11-budgets.mjs",
+  "criticalFirstPaint": {
+    "bytes": 431532,
+    "brotliBytes": 99564,
+    "limit": 460800
+  },
+  "initialShell": {
+    "bytes": 1686894,
+    "brotliBytes": 345523,
+    "limit": 1048576
+  },
+  "fonts": {
+    "bytes": 0,
+    "brotliBytes": 0,
+    "limit": 102400
+  },
+  "routeArt": {
+    "bytes": 7121,
+    "brotliBytes": 3055,
+    "limit": 512000
+  },
+  "largestDecorative": {
+    "path": "assets/cards/card-back-midnight-lattice.v1.svg",
+    "bytes": 1434,
+    "brotliBytes": 553,
+    "limit": 256000
+  },
+  "files": 16,
+  "passed": true
+}
