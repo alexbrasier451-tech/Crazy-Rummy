@@ -261,6 +261,12 @@ export function createWebRtcPeerConnection({
     }).catch(recoverOrFail);
   }
 
+  function beginHandshakeIfConnectionStayedOpen() {
+    if (connection?.connectionState === "connected" && channel?.readyState === "open") {
+      beginHandshake();
+    }
+  }
+
   function resetNegotiation() {
     remoteDescriptionSet = false;
     receivedHello = false;
@@ -452,6 +458,18 @@ export function createWebRtcPeerConnection({
     transition(PEER_STATE.DISCONNECTED, cause);
     try {
       await signalling.resume?.();
+      const { iceServers } = await signalling.getIceServers({
+        matchId,
+        remotePlayerId,
+        iceTransportPolicy,
+      });
+      if (typeof connection.setConfiguration === "function") {
+        connection.setConfiguration({
+          ...(connection.getConfiguration?.() ?? {}),
+          iceServers,
+          iceTransportPolicy,
+        });
+      }
     } catch (refreshCause) {
       transition(PEER_STATE.DISCONNECTED, new PeerTransportError(
         "SIGNALLING_REFRESH_PENDING",
@@ -501,6 +519,7 @@ export function createWebRtcPeerConnection({
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
       await sendSignal(SIGNAL_KIND.ANSWER, { description: plainDescription(connection.localDescription || answer) });
+      beginHandshakeIfConnectionStayedOpen();
       return;
     }
     if (envelope.kind === SIGNAL_KIND.ANSWER) {
@@ -508,6 +527,7 @@ export function createWebRtcPeerConnection({
       await connection.setRemoteDescription(envelope.payload?.description);
       remoteDescriptionSet = true;
       await flushCandidates();
+      beginHandshakeIfConnectionStayedOpen();
       return;
     }
     if (envelope.kind === SIGNAL_KIND.ICE_CANDIDATE) {

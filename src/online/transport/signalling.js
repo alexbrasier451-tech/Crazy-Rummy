@@ -175,7 +175,7 @@ export function createManagedSignallingAdapter({
         // create a fresh provider epoch before any WebRTC recovery signal.
         if (typeof client.close === "function" && !["idle", "closed"].includes(client.state)) {
           await withProviderDeadline(
-            () => client.close(4001, "browser foreground recovery"),
+            () => client.close(1000, "browser foreground recovery"),
             "foreground close",
           );
         }

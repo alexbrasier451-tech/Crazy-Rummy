@@ -209,6 +209,7 @@ test("foreground resume replaces a silently stale connected provider before peer
   assert.equal(guestClient.closeCalls, 1);
   assert.equal(guestClient.connectCalls, guestConnectsBeforeForeground + 1);
   assert.equal(guestClient.channels.has(channel), true);
+  assert.equal(rtc.guestConnection.configurationRefreshes.length, 1);
   assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
   assert.equal(guest.getSnapshot().state, PEER_STATE.CONNECTED);
   assert.deepEqual(rtc.guestConnection.offerOptions.at(-1), { iceRestart: true });
@@ -221,6 +222,7 @@ test("foreground resume replaces a silently stale connected provider before peer
   assert.equal(hostClient.closeCalls, 1);
   assert.equal(hostClient.connectCalls, hostConnectsBeforeForeground + 1);
   assert.equal(hostClient.channels.has(channel), true);
+  assert.equal(rtc.hostConnection.configurationRefreshes.length, 1);
   assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
   assert.equal(guest.getSnapshot().state, PEER_STATE.CONNECTED);
   await Promise.all([host.close(), guest.close()]);
@@ -938,7 +940,11 @@ class FakeDataChannel extends FakeEventTarget {
     }
     queueMicrotask(() => this.peer?.emit("message", { data }));
   }
-  open() { this.readyState = "open"; this.emit("open"); }
+  open() {
+    if (this.readyState === "open") return;
+    this.readyState = "open";
+    this.emit("open");
+  }
   close() {
     if (this.readyState === "closed") return;
     this.readyState = "closed";
@@ -963,6 +969,7 @@ class FakeRtcConnection extends FakeEventTarget {
     this.closed = false;
     this.offerOptions = [];
     this.restartIceCalls = 0;
+    this.configurationRefreshes = [];
     network[`${side}Connection`] = this;
   }
   createDataChannel(_label, options) {
@@ -980,6 +987,11 @@ class FakeRtcConnection extends FakeEventTarget {
     return { type: "offer", sdp: `${this.side}-offer` };
   }
   restartIce() { this.restartIceCalls += 1; }
+  getConfiguration() { return this.configuration; }
+  setConfiguration(configuration) {
+    this.configuration = configuration;
+    this.configurationRefreshes.push(configuration);
+  }
   async createAnswer() { return { type: "answer", sdp: `${this.side}-answer` }; }
   async setLocalDescription(description) {
     this.localDescription = description;
@@ -994,8 +1006,9 @@ class FakeRtcConnection extends FakeEventTarget {
     }
     if (description.type === "answer") {
       for (const connection of [this.network.hostConnection, this.network.guestConnection]) {
+        const stateChanged = connection.connectionState !== "connected";
         connection.connectionState = "connected";
-        connection.emit("connectionstatechange");
+        if (stateChanged) connection.emit("connectionstatechange");
       }
       this.network.channels.host.open();
       this.network.channels.guest.open();

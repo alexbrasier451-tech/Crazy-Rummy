@@ -153,12 +153,19 @@ export function createOnlineMatchSession({
       recoveryRecord,
       onSnapshot(next) { projection = next; sequence = next.revision; persist(); terminal(); publish(); scheduleRecoverySweep(); },
       onStatus(status) {
+        const authorityReportsLocalSeatDisconnected = status.state === "PAUSED"
+          && Array.isArray(status.disconnectedSeatIds)
+          && status.disconnectedSeatIds.includes(boot.localSeatId);
         if (status.state !== "RECONNECTING") {
           guestRebindRequested = false;
           guestTransportInterrupted = false;
         }
         network = { ...network, state: status.state, sync: status.state, recoveryDeadline: status.hostRecoveryDeadline ?? null, terminalReason: status.terminalReason ?? null };
         persist(); terminal(); publish(); scheduleRecoverySweep();
+        if (authorityReportsLocalSeatDisconnected && !guestRebindRequested) {
+          guestRebindRequested = true;
+          sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
+        }
       },
       onCommandResult(result) { lastAction = { commandId: result.commandId, phase: result.accepted === true ? "ACCEPTED" : result.accepted === false ? "REJECTED" : "UNCERTAIN", ...copy(result) }; publish(); }
     });

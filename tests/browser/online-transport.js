@@ -163,6 +163,13 @@ globalThis.transportHarness = Object.freeze({
     await topologies.get("guest_one").send("guest_two", { index: 3 });
     await waitUntil(() => receivedByGuestTwo.length === 3);
   },
+  async resumeConnectedGuest() {
+    await ready;
+    await topologies.get("guest_one").resume();
+    await waitUntil(() =>
+      [...topologies.values()].every((item) => item.getSnapshot().state === PEER_STATE.CONNECTED)
+    );
+  },
   async closeGuestOne() {
     await topologies.get("guest_one").close();
     await waitUntil(() => topologies.get(HOST_ID).getSnapshot().state === PEER_STATE.DISCONNECTED);
