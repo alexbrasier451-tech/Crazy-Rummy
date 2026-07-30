@@ -2,17 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CARD_IDS,
   COMMAND_TYPE,
   HAND_SCHEDULE,
   LIFECYCLE,
   PHASE,
-  assertStateInvariants
+  assertStateInvariants,
+  executeCommand
 } from "../../src/engine/index.js";
 import { SYNC_MESSAGE, SYNC_STATUS } from "../../src/online/index.js";
 import { PEER_STATE } from "../../src/online/transport/index.js";
 import {
   STAGE6_SEATS,
-  createOnlineMatchFixture
+  createOnlineMatchFixture,
+  createThreeSeatState
 } from "../support/online-match-fixture.mjs";
 
 function assertConverged(fixture, message = "all seats must converge") {
@@ -35,6 +38,86 @@ function queuedEventFor(network, seatId, sequence) {
   return (message) => message.destinationPlayerId === playerId
     && message.payload?.type === SYNC_MESSAGE.EVENT
     && message.payload.payload?.authoritativeSequence === sequence;
+}
+
+function commandFor(state, type, actorSeatId, clientCommandId, fields = {}) {
+  return {
+    type,
+    gameId: state.gameId,
+    handId: state.hand?.id,
+    actorSeatId,
+    clientCommandId,
+    expectedRevision: state.revision,
+    ...fields
+  };
+}
+
+function accepted(state, input) {
+  const result = executeCommand(state, input);
+  assert.equal(result.accepted, true, result.detail ?? result.reason);
+  return result.state;
+}
+
+function layoffReadyState() {
+  let state = createThreeSeatState();
+  state = accepted(state, commandFor(
+    state,
+    COMMAND_TYPE.DEALER_INITIAL_DISCARD,
+    "b",
+    "layoff-ready-opening",
+    { cardId: state.hand.handsBySeat.b[0] }
+  ));
+  state = accepted(state, commandFor(
+    state,
+    COMMAND_TYPE.DRAW_STOCK,
+    "c",
+    "layoff-ready-draw"
+  ));
+
+  const targetCardIds = ["clubs:7", "diamonds:7", "hearts:7"];
+  const actorCardIds = ["spades:7", "clubs:2", "diamonds:3", "hearts:4", "spades:5"];
+  const reserved = new Set([...targetCardIds, ...actorCardIds]);
+  const remaining = CARD_IDS.filter((cardId) => !reserved.has(cardId));
+  const next = structuredClone(state);
+  next.hand = {
+    ...next.hand,
+    stockCardIds: remaining.splice(0, 31),
+    discardCardIds: remaining.splice(0, 1),
+    handsBySeat: {
+      a: remaining.splice(0, 6),
+      b: remaining.splice(0, 7),
+      c: actorCardIds
+    },
+    openedBySeat: { a: false, b: false, c: true },
+    melds: [{
+      id: "seven-set",
+      type: "SET",
+      rank: "7",
+      originatingSeatId: "c",
+      slots: targetCardIds.map((cardId, index) => ({
+        slotId: `seven-set:${index}`,
+        cardId,
+        represented: { rank: "7" }
+      }))
+    }],
+    activeSeatId: "c",
+    phase: PHASE.TABLE_PLAY,
+    drawnCardId: actorCardIds.at(-1),
+    drawSource: "stock",
+    drewFinalStock: false,
+    result: null
+  };
+  assert.equal(remaining.length, 0);
+  assertStateInvariants(next);
+  return next;
+}
+
+function dropAllTo(network, destinationPlayerId) {
+  let dropped = 0;
+  while (network.dropWhere((message) => message.destinationPlayerId === destinationPlayerId)) {
+    dropped += 1;
+  }
+  return dropped;
 }
 
 test("three-seat authority keeps actions pending until delivery and fails illegal or malformed input closed", async (t) => {
@@ -143,6 +226,71 @@ test("a foregrounded guest recovers when only the host observed the interruption
   assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.RUNNING);
   assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
   assertConverged(fixture, "one-sided foreground recovery");
+});
+
+test("a guest layoff retries lost reconciliation until the accepted action unlocks", async (t) => {
+  const fixture = createOnlineMatchFixture({ state: layoffReadyState() });
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  const queued = fixture.submit("c", COMMAND_TYPE.LAY_OFF, {
+    clientCommandId: "layoff-with-lost-ack",
+    meldId: "seven-set",
+    slots: [{ slotId: "seven-set:3", cardId: "spades:7" }],
+    placement: "END"
+  }, { flush: false });
+  assert.equal(queued.queued, true);
+
+  fixture.network.deliverWhere((message) =>
+    message.fromPlayerId === "player-c"
+    && message.payload?.type === SYNC_MESSAGE.COMMAND
+  );
+  assert.equal(
+    fixture.authoritativeState().hand.melds[0].slots.length,
+    4,
+    "authority should accept the layoff once"
+  );
+  assert.ok(dropAllTo(fixture.network, "player-c") >= 2);
+  fixture.network.flush();
+
+  const scheduler = fixture.clientSchedulers.c;
+  for (let attempt = 2; attempt <= 4; attempt += 1) {
+    assert.equal(scheduler.runNext(), true, `retry ${attempt} should be scheduled`);
+    fixture.network.deliverWhere((message) =>
+      message.fromPlayerId === "player-c"
+      && message.payload?.type === SYNC_MESSAGE.COMMAND
+    );
+    dropAllTo(fixture.network, "player-c");
+    if (attempt === 4) {
+      assert.ok(fixture.network.dropWhere((message) =>
+        message.fromPlayerId === "player-c"
+        && message.payload?.type === SYNC_MESSAGE.RESYNC_REQUEST
+      ), "the first reconciliation request should be lost");
+    }
+    fixture.network.flush();
+  }
+
+  assert.equal(fixture.sessions.c.getSnapshot().lastAction.phase, "UNCERTAIN");
+  assert.deepEqual(
+    fixture.sessions.c.getSnapshot().network.pendingCommandIds,
+    ["layoff-with-lost-ack"]
+  );
+  assert.equal(
+    scheduler.runNext(),
+    true,
+    "an uncertain accepted command must keep scheduling reconciliation"
+  );
+  fixture.network.deliverWhere((message) =>
+    message.fromPlayerId === "player-c"
+    && message.payload?.type === SYNC_MESSAGE.RESYNC_REQUEST
+  );
+  fixture.network.flush();
+
+  const recovered = fixture.sessions.c.getSnapshot();
+  assert.equal(recovered.lastAction.phase, "ACCEPTED");
+  assert.deepEqual(recovered.network.pendingCommandIds, []);
+  assert.equal(recovered.view.hand.melds[0].slots.length, 4);
+  assertConverged(fixture, "lost layoff acknowledgement recovery");
 });
 
 test("a thirteen-hand online match converges through delay, reorder, loss, duplication, and rebind", async (t) => {

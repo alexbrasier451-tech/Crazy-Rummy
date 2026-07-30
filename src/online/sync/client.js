@@ -69,6 +69,7 @@ export function createClientSyncSession({
   let connectionState = SYNC_STATUS.RUNNING;
   let hostRecoveryDeadline = null;
   let terminalReason = null;
+  let reconciliationTimer = null;
   const pending = new Map();
   const completedCommands = new Set();
   const eventBuffer = new Map();
@@ -148,6 +149,32 @@ export function createClientSyncSession({
       reason,
       pendingCommands
     }));
+    if (pendingCommands.length > 0) scheduleReconciliationRetry();
+  }
+
+  function clearReconciliationRetry() {
+    if (reconciliationTimer === null) return;
+    scheduler.clearTimeout(reconciliationTimer);
+    reconciliationTimer = null;
+  }
+
+  function scheduleReconciliationRetry() {
+    if (
+      reconciliationTimer !== null
+      || connectionState !== SYNC_STATUS.RUNNING
+      || ![...pending.values()].some((record) => record.status === "UNCERTAIN")
+    ) return;
+    reconciliationTimer = scheduler.setTimeout(() => {
+      reconciliationTimer = null;
+      if (connectionState !== SYNC_STATUS.RUNNING) return;
+      let retryable = false;
+      for (const record of pending.values()) {
+        if (record.status !== "UNCERTAIN") continue;
+        record.reconciliationRequested = false;
+        retryable = true;
+      }
+      if (retryable) reconcilePendingCommands("COMMAND_ACK_STILL_UNKNOWN");
+    }, maximumRetryMs);
   }
 
   function clearPending(commandId) {
@@ -155,10 +182,14 @@ export function createClientSyncSession({
     if (!record) return null;
     if (record.timer !== null) scheduler.clearTimeout(record.timer);
     pending.delete(commandId);
+    if (![...pending.values()].some((entry) => entry.status === "UNCERTAIN")) {
+      clearReconciliationRetry();
+    }
     return record;
   }
 
   function suspendPendingRetries() {
+    clearReconciliationRetry();
     for (const record of pending.values()) {
       if (record.timer !== null) scheduler.clearTimeout(record.timer);
       record.timer = null;
@@ -404,7 +435,10 @@ export function createClientSyncSession({
     const records = [...pending.values()].filter((record) =>
       record.status === "UNCERTAIN" && !record.reconciliationRequested
     );
-    if (records.length === 0) return;
+    if (records.length === 0) {
+      scheduleReconciliationRetry();
+      return;
+    }
     for (const record of records) record.reconciliationRequested = true;
     requestResync(reason);
   }
@@ -434,6 +468,7 @@ export function createClientSyncSession({
       for (const record of pending.values()) {
         if (record.timer !== null) scheduler.clearTimeout(record.timer);
       }
+      clearReconciliationRetry();
       pending.clear();
       return publishStatus({ reason: "HOST_RECOVERY_EXPIRED" });
     }
@@ -477,6 +512,7 @@ export function createClientSyncSession({
   }
 
   function clearRecovery() {
+    clearReconciliationRetry();
     for (const record of pending.values()) {
       if (record.timer !== null) scheduler.clearTimeout(record.timer);
     }
@@ -485,6 +521,14 @@ export function createClientSyncSession({
     projection = null;
     authoritativeSequence = 0;
     return null;
+  }
+
+  function dispose() {
+    clearReconciliationRetry();
+    for (const record of pending.values()) {
+      if (record.timer !== null) scheduler.clearTimeout(record.timer);
+      record.timer = null;
+    }
   }
 
   return freeze({
@@ -499,6 +543,7 @@ export function createClientSyncSession({
     exportRecoveryRecord,
     shouldClearRecovery: () => [SYNC_STATUS.FORFEIT, SYNC_STATUS.ABANDONED].includes(connectionState),
     clearRecovery,
+    dispose,
     inspect
   });
 }

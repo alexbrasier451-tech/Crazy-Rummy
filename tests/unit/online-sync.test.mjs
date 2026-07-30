@@ -80,6 +80,9 @@ function publicPart(snapshot) {
 
 function manualScheduler() {
   const tasks = [];
+  function nextTask() {
+    return tasks.find((candidate) => !candidate.cancelled && !candidate.ran);
+  }
   return {
     setTimeout(callback) {
       const task = { callback, cancelled: false };
@@ -89,12 +92,17 @@ function manualScheduler() {
     clearTimeout(task) {
       task.cancelled = true;
     },
+    runNext() {
+      const task = nextTask();
+      if (!task) return false;
+      task.ran = true;
+      task.callback();
+      return true;
+    },
     runAll(limit = 30) {
       let count = 0;
-      while (tasks.some((task) => !task.cancelled && !task.ran)) {
-        const task = tasks.find((candidate) => !candidate.cancelled && !candidate.ran);
-        task.ran = true;
-        task.callback();
+      while (nextTask()) {
+        this.runNext();
         if (++count > limit) throw new Error("Scheduler did not settle.");
       }
     }
@@ -275,7 +283,8 @@ test("commands retry with one stable ID, stop at a bound, and resynchronise an u
     "retry-one-id",
     { cardId: state.hand.handsBySeat.b[0] }
   ));
-  scheduler.runAll();
+  assert.equal(scheduler.runNext(), true);
+  assert.equal(scheduler.runNext(), true);
 
   const attempts = sent.filter((message) => message.type === SYNC_MESSAGE.COMMAND);
   assert.equal(attempts.length, 3);

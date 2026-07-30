@@ -244,7 +244,7 @@ export function createOnlineMatchSession({
     if (disposed || !started || visibility.isVisible?.() === false) return undefined;
     return reconnect().catch(() => snapshot());
   }) ?? (() => {});
-  return freeze({ start, getSnapshot: snapshot, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }, submit, execute: submit, reconnect, async dispose() { if (disposed) return; disposed = true; unsubscribeVisibility(); persist(); await topology.close?.(); listeners.clear(); } });
+  return freeze({ start, getSnapshot: snapshot, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }, submit, execute: submit, reconnect, async dispose() { if (disposed) return; disposed = true; unsubscribeVisibility(); persist(); sync.dispose?.(); await topology.close?.(); listeners.clear(); } });
 }
 
 function defaultVisibility() {

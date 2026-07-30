@@ -47,16 +47,26 @@ function noopRecoveryStorage() {
 
 function quietScheduler() {
   const tasks = [];
+  function nextPendingTask() {
+    return tasks.find((task) => !task.cancelled && !task.ran) ?? null;
+  }
   return Object.freeze({
     setTimeout(callback, delay) {
-      const task = { callback, delay, cancelled: false };
+      const task = { callback, delay, cancelled: false, ran: false };
       tasks.push(task);
       return task;
     },
     clearTimeout(task) {
       task.cancelled = true;
     },
-    pending: () => tasks.filter((task) => !task.cancelled)
+    runNext() {
+      const task = nextPendingTask();
+      if (!task) return false;
+      task.ran = true;
+      task.callback();
+      return true;
+    },
+    pending: () => tasks.filter((task) => !task.cancelled && !task.ran)
   });
 }
 

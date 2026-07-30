@@ -31,11 +31,22 @@ try {
   assert.deepEqual(await legalWildRank.locator("option").evaluateAll((options) => (
     options.map((option) => option.value).filter(Boolean)
   )), ["10"], "a layoff wild must offer only the legal rank at the selected run end");
+  await legalWildRank.selectOption("10");
   assert.deepEqual(await page.getByLabel("Laid-off wild represents suit for 4 of clubs").locator("option").evaluateAll((options) => (
     options.map((option) => option.value).filter(Boolean)
   )), ["clubs"], "a layoff wild must offer only the destination run's suit");
-  await page.locator('[data-game-control="cancel-layoff"]').click();
-  await wildCard.click();
+  await page.locator('[data-game-control="submit-layoff"]').click();
+  assert.equal(
+    (await page.evaluate(() => globalThis.gameFlowHarness.pendingAction()))?.type,
+    "LAY_OFF",
+    "the card addition should remain pending until host confirmation"
+  );
+  assert.equal(await page.locator('[data-game-control="submit-layoff"]').isDisabled(), true,
+    "the staged layoff must be protected from duplicate taps while pending");
+  assert.equal(await page.evaluate(() => globalThis.gameFlowHarness.acceptPendingAction()), true);
+  await page.locator('[data-game-sheet="add-to-table"]').waitFor({ state: "detached" });
+  assert.equal(await page.locator('[data-game-control="open-actions"]').isEnabled(), true,
+    "an accepted layoff acknowledgement must close the composer and unlock gameplay");
 
   const card = page.locator('[data-private-hand] [data-card-id="clubs:5"]');
   await card.click();

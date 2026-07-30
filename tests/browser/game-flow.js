@@ -1,6 +1,8 @@
 import { gameScreen } from "../../src/screens/game.js";
 
 const listeners = new Set();
+let commandOrdinal = 0;
+let pendingAction = null;
 let snapshot = {
   localSeatId: "a",
   preferences: {},
@@ -42,6 +44,18 @@ const session = {
     listeners.add(listener);
     return () => listeners.delete(listener);
   },
+  submit(type, payload) {
+    const commandId = `game-flow:${++commandOrdinal}`;
+    pendingAction = { commandId, type, payload: structuredClone(payload) };
+    snapshot = structuredClone(snapshot);
+    snapshot.lastAction = { commandId, phase: "PENDING" };
+    snapshot.network = {
+      state: "RUNNING",
+      pendingCommandIds: [commandId]
+    };
+    for (const listener of listeners) listener();
+    return { queued: true, commandId };
+  },
   execute: async () => ({ accepted: false, reason: "TEST_ONLY" })
 };
 
@@ -54,6 +68,41 @@ document.querySelector("#app").append(gameScreen({
 }));
 
 globalThis.gameFlowHarness = Object.freeze({
+  acceptPendingAction() {
+    if (!pendingAction) return false;
+    snapshot = structuredClone(snapshot);
+    if (pendingAction.type === "LAY_OFF") {
+      const target = snapshot.view.hand.melds.find((meld) =>
+        meld.id === pendingAction.payload.meldId
+      );
+      const added = structuredClone(pendingAction.payload.slots ?? []);
+      if (target) {
+        target.slots = pendingAction.payload.placement === "START"
+          ? [...added, ...target.slots]
+          : [...target.slots, ...added];
+      }
+      const laidOffIds = new Set(added.map((slot) => slot.cardId));
+      snapshot.view.hand.ownHandCardIds = snapshot.view.hand.ownHandCardIds
+        .filter((cardId) => !laidOffIds.has(cardId));
+    }
+    snapshot.view.revision += 1;
+    snapshot.lastAction = {
+      commandId: pendingAction.commandId,
+      phase: "ACCEPTED",
+      accepted: true,
+      authoritativeSequence: snapshot.view.revision
+    };
+    snapshot.network = {
+      state: "RUNNING",
+      pendingCommandIds: []
+    };
+    pendingAction = null;
+    for (const listener of listeners) listener();
+    return true;
+  },
+  pendingAction() {
+    return structuredClone(pendingAction);
+  },
   setNetwork(state) {
     snapshot = structuredClone(snapshot);
     snapshot.network = { state, recoveryDeadline: Date.now() + 120_000, pendingCommandIds: [] };
