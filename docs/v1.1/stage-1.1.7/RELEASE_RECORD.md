@@ -2,7 +2,7 @@
 
 **Date:** 30 July 2026  
 **Implementation state:** complete in beta candidate
-`2caf991fd3eed4bc0e0e37341792bfc2c1d107e1`  
+`bec38badd57720e6d38457e98df4d6939e69ddc1`  
 **Automated release evidence:** complete  
 **Public release acceptance:** open
 
@@ -24,14 +24,14 @@
 Automated PNGs and their manifest are in the task-scoped visualization
 directory outside the repository and outside approved baseline locations. The
 manifest records `baselineUpdate: false`, `automatedEvidenceOnly: true`, and
-source revision `2caf991fd3eed4bc0e0e37341792bfc2c1d107e1`.
+source revision `bec38badd57720e6d38457e98df4d6939e69ddc1`.
 
 ## Open release gates
 
 The following cannot be truthfully closed by the repository build:
 
 1. owner acceptance and final beta reconciliation of candidate
-   `2caf991fd3eed4bc0e0e37341792bfc2c1d107e1` as the release baseline;
+   `bec38badd57720e6d38457e98df4d6939e69ddc1` as the release baseline;
 2. owner/design review of the complete contact sheet and intentional
    before/after creative result;
 3. physical constrained Android and iPhone installed-PWA evidence;
