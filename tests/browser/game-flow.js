@@ -1,4 +1,5 @@
 import { gameScreen } from "../../src/screens/game.js";
+import { validateMeld } from "../../src/engine/index.js";
 
 const listeners = new Set();
 let commandOrdinal = 0;
@@ -22,8 +23,16 @@ let snapshot = {
       phase: "TABLE_PLAY",
       stockCount: 42,
       discardCardIds: ["hearts:K"],
-      ownHandCardIds: ["clubs:4", "clubs:5", "clubs:6", "clubs:8", "diamonds:9"],
-      handCountsBySeat: { a: 5, b: 3 },
+      ownHandCardIds: [
+        "clubs:4",
+        "diamonds:4",
+        "clubs:5",
+        "clubs:6",
+        "clubs:8",
+        "clubs:J",
+        "diamonds:9"
+      ],
+      handCountsBySeat: { a: 7, b: 3 },
       melds: [{
         id: "run-1",
         type: "RUN",
@@ -110,6 +119,16 @@ globalThis.gameFlowHarness = Object.freeze({
         snapshot.view.hand.handCountsBySeat.a += 1;
       }
       snapshot.view.hand.phase = "TABLE_PLAY";
+    } else if (pendingAction.type === "CREATE_MELD") {
+      const checked = validateMeld(pendingAction.payload.meld, {
+        wildRank: snapshot.view.hand.wildRank
+      });
+      if (!checked.ok) return false;
+      snapshot.view.hand.melds.push(structuredClone(checked.meld));
+      const meldCardIds = new Set(checked.meld.slots.map((slot) => slot.cardId));
+      snapshot.view.hand.ownHandCardIds = snapshot.view.hand.ownHandCardIds
+        .filter((cardId) => !meldCardIds.has(cardId));
+      snapshot.view.hand.handCountsBySeat.a -= meldCardIds.size;
     }
     snapshot.view.revision += 1;
     pendingAction.projected = true;

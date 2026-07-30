@@ -324,7 +324,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     selected: new Set(),
     sort: initialPreferences.handSort,
     sheet: null,
-    composer: { order: [], representations: {} },
+    composer: { type: null, order: [], representations: {} },
     layoff: { meldId: null, placement: "END", representations: {} },
     replace: { meldId: null, wildCardId: null },
     discardConfirm: false,
@@ -621,7 +621,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     if (["compose", "layoff", "replace", "discard"].includes(ui.sheet)) {
       ui.sheet = null;
     }
-    ui.composer = { order: [], representations: {} };
+    ui.composer = { type: null, order: [], representations: {} };
     ui.layoff = { meldId: null, placement: "END", representations: {} };
     ui.replace = { meldId: null, wildCardId: null };
     ui.discardConfirm = false;
@@ -789,9 +789,14 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     });
     const interpretations = legalMeldInterpretations(preview, { wildRank: hand.wildRank });
     const types = new Set(interpretations.map(({ type: candidateType }) => candidateType));
-    const type = types.size === 1 ? interpretations[0].type : null;
+    const inferredType = types.size === 1 ? interpretations[0].type : null;
+    const chosenType = types.has(ui.composer.type) ? ui.composer.type : null;
+    const type = inferredType ?? chosenType;
+    const typedInterpretations = type
+      ? interpretations.filter(({ type: candidateType }) => candidateType === type)
+      : [];
     const wildCards = selectedWildCards(chosen, hand.wildRank);
-    const compatibleInterpretations = interpretations.filter((interpretation) => (
+    const compatibleInterpretations = typedInterpretations.filter((interpretation) => (
       interpretationMatchesSelections(
         interpretation,
         wildCards,
@@ -799,18 +804,17 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
         hand.wildRank
       )
     ));
-    const selectedInterpretation = type === "SET" && interpretations.length === 1
-      ? interpretations[0]
-      : compatibleInterpretations.length === 1
-        ? compatibleInterpretations[0]
-        : null;
+    const selectedInterpretation = compatibleInterpretations.length === 1
+      ? compatibleInterpretations[0]
+      : null;
+    const typeChoiceRequired = types.size > 1 && !type;
     let representationProblem = null;
     if (chosen.length < 3) {
       representationProblem = "Select at least three cards to add a set or run.";
     } else if (!interpretations.length) {
       representationProblem = "Those cards do not form one complete legal set or run.";
-    } else if (types.size > 1) {
-      representationProblem = "Those cards have more than one legal meaning. Add or remove a card so the game can detect one meld.";
+    } else if (typeChoiceRequired) {
+      representationProblem = null;
     } else if (!compatibleInterpretations.length) {
       representationProblem = "That wild rank does not complete this run.";
     } else if (!selectedInterpretation) {
@@ -852,7 +856,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     );
     const wildControls = type === "RUN"
       ? wildCards.map((cardId) => {
-          const candidates = interpretations.filter((interpretation) => (
+          const candidates = typedInterpretations.filter((interpretation) => (
             interpretationMatchesSelections(
               interpretation,
               wildCards,
@@ -890,19 +894,41 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
             return copy(`${cardDisplayName(cardId)} automatically counts as ${represented.rank} in this set.`);
           })
         : [];
+    const typeChoice = types.size > 1
+      ? element("fieldset", { className: "game-choice" },
+          element("legend", { text: "Choose meld type" }),
+          choice("Set", type === "SET", () => {
+            ui.composer.type = "SET";
+            ui.composer.representations = {};
+            render();
+          }, { name: "meld-type" }),
+          choice("Run", type === "RUN", () => {
+            ui.composer.type = "RUN";
+            ui.composer.representations = {};
+            render();
+          }, { name: "meld-type" })
+        )
+      : null;
     return gameSheet("Compose meld", "Edit the staged cards here. Sets resolve wilds automatically; runs offer only legal open positions.", [
       element("p", { text: "Toggle cards to add or remove them without leaving this composer." }),
       composerCards,
       orderedCards,
+      typeChoice,
       type
         ? element("p", {
           className: "game-meld-detected",
           role: "status",
           text: `${type === "RUN" ? "Run" : "Set"} detected`
         })
-        : copy("Meld type will appear when the selected cards form one legal meld."),
+        : types.size > 1
+          ? copy("These cards form a legal set and a legal run. Choose how to play them.")
+          : copy("Meld type will appear when the selected cards form one legal meld."),
       ...wildControls,
-      representationProblem ? element("p", { className: "game-inline-error", text: representationProblem }) : copy("Selection is staged locally. It is not on the shared table until accepted."),
+      typeChoiceRequired
+        ? copy("Choose Set or Run to continue.")
+        : representationProblem
+          ? element("p", { className: "game-inline-error", text: representationProblem })
+          : copy("Selection is staged locally. It is not on the shared table until accepted."),
       stack(
         commandButton("Add set or run", () => {
           if (!guardTablePlay(hand, localSeatId)) return;
@@ -929,12 +955,15 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
             onAccepted: () => {
               ui.sheet = null;
               ui.selected.clear();
-              ui.composer = { order: [], representations: {} };
+              ui.composer = { type: null, order: [], representations: {} };
             }
           });
         }, {
           variant: "primary",
-          disabled: Boolean(representationProblem) || !selectedInterpretation || gameplayIsBlocked(),
+          disabled: typeChoiceRequired
+            || Boolean(representationProblem)
+            || !selectedInterpretation
+            || gameplayIsBlocked(),
           name: "place-meld"
         }),
         commandButton("Cancel composition", closeSheet, { variant: "quiet", name: "cancel-meld" })
@@ -1231,7 +1260,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           if (!guardTablePlay(hand, localSeatId)) return;
           const chosen = selectedOrAnnounce(cards);
           if (!chosen) return;
-          ui.composer = { order: chosen, representations: {} };
+          ui.composer = { type: null, order: chosen, representations: {} };
           openActionSubsheet("compose");
         }, { variant: "primary", disabled: gameplayIsBlocked() || selectedCount < 1, name: "open-meld" }),
         commandButton("Add to table", () => {
@@ -1347,8 +1376,8 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     element("div", { className: "game-decision-bench__body" }, ...content));
   }
 
-  function choice(label, checked, onChange) {
-    const input = element("input", { type: "radio", checked, onChange });
+  function choice(label, checked, onChange, { name } = {}) {
+    const input = element("input", { type: "radio", checked, onChange, name });
     return element("label", { className: "game-radio" }, input, label);
   }
 
