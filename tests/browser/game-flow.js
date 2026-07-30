@@ -22,15 +22,15 @@ let snapshot = {
       phase: "TABLE_PLAY",
       stockCount: 42,
       discardCardIds: ["hearts:K"],
-      ownHandCardIds: ["clubs:4", "clubs:5", "clubs:6", "diamonds:9"],
-      handCountsBySeat: { a: 4, b: 3 },
+      ownHandCardIds: ["clubs:4", "clubs:5", "clubs:6", "clubs:8", "diamonds:9"],
+      handCountsBySeat: { a: 5, b: 3 },
       melds: [{
         id: "run-1",
         type: "RUN",
         originatingSeatId: "b",
         slots: [
           { slotId: "run-1:1", cardId: "clubs:7", represented: { rank: "7", suit: "clubs" } },
-          { slotId: "run-1:2", cardId: "clubs:8", represented: { rank: "8", suit: "clubs" } },
+          { slotId: "run-1:2", cardId: "hearts:4", represented: { rank: "8", suit: "clubs" } },
           { slotId: "run-1:3", cardId: "clubs:9", represented: { rank: "9", suit: "clubs" } }
         ]
       }]
@@ -68,8 +68,9 @@ document.querySelector("#app").append(gameScreen({
 }));
 
 globalThis.gameFlowHarness = Object.freeze({
-  acceptPendingAction() {
+  projectPendingAction() {
     if (!pendingAction) return false;
+    if (pendingAction.projected) return true;
     snapshot = structuredClone(snapshot);
     if (pendingAction.type === "LAY_OFF") {
       const target = snapshot.view.hand.melds.find((meld) =>
@@ -84,8 +85,31 @@ globalThis.gameFlowHarness = Object.freeze({
       const laidOffIds = new Set(added.map((slot) => slot.cardId));
       snapshot.view.hand.ownHandCardIds = snapshot.view.hand.ownHandCardIds
         .filter((cardId) => !laidOffIds.has(cardId));
+    } else if (pendingAction.type === "REPLACE_WILD") {
+      const target = snapshot.view.hand.melds.find((meld) =>
+        meld.id === pendingAction.payload.meldId
+      );
+      const slot = target?.slots.find((candidate) =>
+        candidate.cardId === pendingAction.payload.wildCardId
+      );
+      if (slot) slot.cardId = pendingAction.payload.naturalCardId;
+      snapshot.view.hand.ownHandCardIds = snapshot.view.hand.ownHandCardIds
+        .filter((cardId) => cardId !== pendingAction.payload.naturalCardId);
+      if (!snapshot.view.hand.ownHandCardIds.includes(pendingAction.payload.wildCardId)) {
+        snapshot.view.hand.ownHandCardIds.push(pendingAction.payload.wildCardId);
+      }
     }
     snapshot.view.revision += 1;
+    pendingAction.projected = true;
+    for (const listener of listeners) listener();
+    return true;
+  },
+  acceptPendingAction() {
+    if (!pendingAction) return false;
+    if (!pendingAction.projected) {
+      this.projectPendingAction();
+    }
+    snapshot = structuredClone(snapshot);
     snapshot.lastAction = {
       commandId: pendingAction.commandId,
       phase: "ACCEPTED",

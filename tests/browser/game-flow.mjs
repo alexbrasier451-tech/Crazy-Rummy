@@ -43,10 +43,39 @@ try {
   );
   assert.equal(await page.locator('[data-game-control="submit-layoff"]').isDisabled(), true,
     "the staged layoff must be protected from duplicate taps while pending");
+  assert.equal(await page.evaluate(() => globalThis.gameFlowHarness.projectPendingAction()), true);
+  await page.locator('[data-game-sheet="add-to-table"]').waitFor({ state: "detached" });
   assert.equal(await page.evaluate(() => globalThis.gameFlowHarness.acceptPendingAction()), true);
   await page.locator('[data-game-sheet="add-to-table"]').waitFor({ state: "detached" });
   assert.equal(await page.locator('[data-game-control="open-actions"]').isEnabled(), true,
     "an accepted layoff acknowledgement must close the composer and unlock gameplay");
+
+  const replacementCard = page.locator('[data-private-hand] [data-card-id="clubs:8"]');
+  await replacementCard.click();
+  await page.locator('[data-game-control="open-actions"]').click();
+  await page.locator('[data-game-control="replace-wild"]').click();
+  const replacementTargets = page.locator(
+    '[data-game-sheet="replace-wild"] [data-replacement-target="true"]'
+  );
+  assert.equal(await replacementTargets.count(), 1,
+    "wild replacement must show only legal targets as card previews");
+  assert.equal(await page.getByLabel("Wild card on table").count(), 0,
+    "wild replacement targets must not be presented as a text select");
+  assert.equal(await replacementTargets.first().locator(".game-meld-card").count(), 8,
+    "the replacement target must render the table cards before and after the swap");
+  await page.locator('[data-game-control="confirm-wild-replacement"]').click();
+  assert.equal(
+    (await page.evaluate(() => globalThis.gameFlowHarness.pendingAction()))?.type,
+    "REPLACE_WILD",
+    "wild replacement should remain pending until host confirmation"
+  );
+  assert.equal(await page.evaluate(() => globalThis.gameFlowHarness.projectPendingAction()), true);
+  await page.locator('[data-game-sheet="replace-wild"]').waitFor({ state: "detached" });
+  assert.equal(await page.getByText("Selected cards: 0").count(), 1,
+    "an authoritative replacement projection must clear its consumed selection without recursion");
+  assert.equal(await page.evaluate(() => globalThis.gameFlowHarness.acceptPendingAction()), true);
+  assert.equal(await page.locator('[data-game-control="open-actions"]').isEnabled(), true,
+    "the replacement acknowledgement must unlock gameplay");
 
   const card = page.locator('[data-private-hand] [data-card-id="clubs:5"]');
   await card.click();

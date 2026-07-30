@@ -1124,6 +1124,15 @@
   filter: saturate(0.86);
 }
 
+.game-replacement-target__before {
+  opacity: 0.72;
+}
+
+.game-replacement-target__before .game-meld-card[data-wild="true"],
+.game-replacement-target__after .game-meld-card--highlight {
+  border-color: var(--color-ticket-gold);
+}
+
 .game-layoff-target__direction {
   flex: 0 0 auto;
   color: var(--color-ticket-gold);

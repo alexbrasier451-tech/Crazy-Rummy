@@ -15,7 +15,8 @@ import {
   inferMeldType,
   legalMeldInterpretations,
   legalRunExtensionRanks,
-  validateLayoff
+  validateLayoff,
+  validateWildReplacement
 } from "../engine/index.js";
 import {
   RANKS,
@@ -201,6 +202,22 @@ function validLayoffTargets(melds, cardIds, wildRank) {
   });
 }
 
+function validWildReplacementTargets(melds, naturalCardId, wildRank) {
+  if (!naturalCardId) return [];
+  return (melds ?? []).flatMap((meld) => (
+    (meld.slots ?? []).flatMap((slot) => {
+      if (cardParts(slot.cardId)?.rank !== wildRank) return [];
+      const checked = validateWildReplacement(meld, {
+        wildCardId: slot.cardId,
+        naturalCardId
+      }, { wildRank });
+      return checked.ok
+        ? [{ meld, slot, replacementMeld: checked.meld }]
+        : [];
+    })
+  ));
+}
+
 function variantsMatchingRepresentations(variants, representations, ignoredCardId) {
   return variants.filter(({ representations: candidate }) => (
     Object.entries(representations).every(([cardId, representation]) => (
@@ -250,10 +267,16 @@ function meldSummary(meld, view) {
   return `${kind} by ${nameForSeat(view, meld.originatingSeatId)}: ${cards.join(", ")}.`;
 }
 
-function meldCard(slot, wildRank) {
+function meldCard(slot, wildRank, { highlight = false } = {}) {
   const parts = cardParts(slot.cardId);
   return element("span", {
-    className: `game-meld-card${parts?.suit === "diamonds" || parts?.suit === "hearts" ? " game-meld-card--red" : ""}`,
+    className: [
+      "game-meld-card",
+      parts?.suit === "diamonds" || parts?.suit === "hearts"
+        ? "game-meld-card--red"
+        : "",
+      highlight ? "game-meld-card--highlight" : ""
+    ].filter(Boolean).join(" "),
     text: parts ? `${parts.rank} ${parts.symbol}` : "Unknown card",
     dataset: {
       cardId: slot.cardId,
@@ -538,6 +561,25 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     return chosen;
   }
 
+  function reconcilePrivateStaging(ownCards) {
+    const owned = new Set(ownCards);
+    const selected = new Set([...ui.selected].filter((cardId) => owned.has(cardId)));
+    const composerOrder = ui.composer.order.filter((cardId) => owned.has(cardId));
+    const lostSelectedCard = selected.size !== ui.selected.size;
+    const lostComposerCard = composerOrder.length !== ui.composer.order.length;
+    ui.selected = selected;
+    ui.composer.order = composerOrder;
+    if (!lostSelectedCard && !lostComposerCard) return;
+
+    if (["compose", "layoff", "replace", "discard"].includes(ui.sheet)) {
+      ui.sheet = null;
+    }
+    ui.composer = { order: [], representations: {} };
+    ui.layoff = { meldId: null, placement: "END", representations: {} };
+    ui.replace = { meldId: null, wildCardId: null };
+    ui.discardConfirm = false;
+  }
+
   function closeSheet() {
     ui.sheet = null;
     ui.discardConfirm = false;
@@ -650,8 +692,14 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
   }
 
   function composerSheet(view, hand, localSeatId, cards) {
-    const chosen = ui.composer.order.length ? ui.composer.order : selectedOrAnnounce(cards);
-    if (!chosen) return null;
+    const chosen = ui.composer.order.length
+      ? ui.composer.order
+      : selectedCardIds(cards, ui.selected);
+    if (!chosen.length) {
+      return gameSheet("Compose meld", "Select one or more cards before composing a set or run.", [
+        commandButton("Close", closeSheet, { variant: "quiet" })
+      ]);
+    }
     const preview = buildMeldCandidate({
       id: "meld-preview",
       cardIds: chosen,
@@ -814,8 +862,12 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
   }
 
   function layoffSheet(view, hand, localSeatId, cards) {
-    const chosen = selectedOrAnnounce(cards);
-    if (!chosen) return null;
+    const chosen = selectedCardIds(cards, ui.selected);
+    if (!chosen.length) {
+      return gameSheet("Add to table", "Select one or more cards before adding to a shared meld.", [
+        commandButton("Close", closeSheet, { variant: "quiet" })
+      ]);
+    }
     if (!hand.melds.length) return gameSheet("Add to table", "There are no shared melds to add to.", [commandButton("Close", closeSheet, { variant: "quiet" })]);
     const targets = validLayoffTargets(hand.melds, chosen, hand.wildRank);
     const target = targets.find(({ meld, placement }) => (
@@ -903,40 +955,75 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
   }
 
   function replacementSheet(hand, localSeatId, cards) {
-    const selectedCards = selectedOrAnnounce(cards, "Select the matching natural card from your hand first.");
-    const naturalCardId = selectedCards?.[0];
-    const entries = hand.melds.flatMap((meld) => meld.slots
-      .filter((slot) => cardParts(slot.cardId)?.rank === hand.wildRank)
-      .map((slot) => ({ meld, slot })));
-    const selectedEntry = entries.find((entry) => entry.meld.id === ui.replace.meldId && entry.slot.cardId === ui.replace.wildCardId) ?? entries[0];
-    if (!selectedEntry || !naturalCardId || selectedCards.length !== 1) {
-      return gameSheet("Replace a wild", "Select exactly one matching natural card and a wild card on the shared table.", [
+    const selectedCards = selectedCardIds(cards, ui.selected);
+    const naturalCardId = selectedCards.length === 1 ? selectedCards[0] : null;
+    const targets = validWildReplacementTargets(hand.melds, naturalCardId, hand.wildRank);
+    const selectedTarget = targets.find((entry) => (
+      entry.meld.id === ui.replace.meldId
+      && entry.slot.cardId === ui.replace.wildCardId
+    )) ?? targets[0] ?? null;
+    if (!naturalCardId || selectedCards.length !== 1) {
+      return gameSheet("Replace a wild", "Select exactly one natural card from your hand first.", [
         commandButton("Close", closeSheet, { variant: "quiet" })
       ]);
     }
-    ui.replace.meldId = selectedEntry.meld.id;
-    ui.replace.wildCardId = selectedEntry.slot.cardId;
-    return gameSheet("Replace wild", "Review both movements before confirming the replacement.", [
-      element("label", { text: "Wild card on table" }),
-      element("select", {
-        value: `${selectedEntry.meld.id}|${selectedEntry.slot.cardId}`,
-        "aria-label": "Wild card on table",
-        onChange: (event) => {
-          const [meldId, wildCardId] = event.target.value.split("|");
-          ui.replace = { meldId, wildCardId };
+    if (!selectedTarget) {
+      return gameSheet("Replace a wild", "That card cannot legally replace any wild on the shared table.", [
+        element("p", {
+          className: "game-inline-error",
+          text: `No valid target is available for ${cardDisplayName(naturalCardId)}.`
+        }),
+        commandButton("Cancel replacement", closeSheet, {
+          variant: "quiet",
+          name: "cancel-wild-replacement"
+        })
+      ]);
+    }
+    ui.replace.meldId = selectedTarget.meld.id;
+    ui.replace.wildCardId = selectedTarget.slot.cardId;
+    return gameSheet("Replace wild", "Choose a legal card preview. Each option shows the table before and after the swap.", [
+      element("div", {
+        className: "game-layoff-target-list game-replacement-target-list",
+        "aria-label": "Legal wild replacement targets"
+      }, targets.map((candidate) => element("button", {
+        type: "button",
+        className: "game-layoff-target game-replacement-target",
+        "aria-label": `Replace ${cardDisplayName(candidate.slot.cardId)}, representing ${representedLabel(candidate.slot.represented)}, with ${cardDisplayName(naturalCardId)}. The wild returns to your hand.`,
+        "aria-pressed": String(
+          candidate.meld.id === selectedTarget.meld.id
+          && candidate.slot.cardId === selectedTarget.slot.cardId
+        ),
+        dataset: {
+          meldId: candidate.meld.id,
+          wildCardId: candidate.slot.cardId,
+          replacementTarget: "true"
+        },
+        onClick: () => {
+          ui.replace = {
+            meldId: candidate.meld.id,
+            wildCardId: candidate.slot.cardId
+          };
           render();
         }
-      }, ...entries.map((entry) => element("option", {
-        value: `${entry.meld.id}|${entry.slot.cardId}`,
-        text: `${cardDisplayName(entry.slot.cardId)} represents ${representedLabel(entry.slot.represented)}`
-      }))),
-      copy(`Your ${cardDisplayName(naturalCardId)} replaces the table wild. ${cardDisplayName(selectedEntry.slot.cardId)} returns to your hand.`),
+      },
+      element("div", {
+        className: "game-layoff-target__preview game-replacement-target__preview",
+        "aria-hidden": "true"
+      },
+      element("div", { className: "meld-group game-replacement-target__before" },
+        candidate.meld.slots.map((slot) => meldCard(slot, hand.wildRank))),
+      element("span", { className: "game-layoff-target__direction", text: "to" }),
+      element("div", { className: "meld-group game-replacement-target__after" },
+        candidate.replacementMeld.slots.map((slot) => meldCard(slot, hand.wildRank, {
+          highlight: slot.cardId === naturalCardId
+        }))))))),
+      copy(`${cardDisplayName(selectedTarget.slot.cardId)} returns to your hand when this preview is accepted.`),
       stack(
         commandButton("Replace wild card", () => {
           if (!guardTablePlay(hand, localSeatId)) return;
           execute("REPLACE_WILD", {
-            meldId: selectedEntry.meld.id,
-            wildCardId: selectedEntry.slot.cardId,
+            meldId: selectedTarget.meld.id,
+            wildCardId: selectedTarget.slot.cardId,
             naturalCardId
           }, {
             onAccepted: () => {
@@ -1214,9 +1301,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       return;
     }
     const ownCards = Array.isArray(hand.ownHandCardIds) ? hand.ownHandCardIds : [];
-    if (!isOnline || !gameplayIsBlocked()) {
-      ui.selected = new Set([...ui.selected].filter((cardId) => ownCards.includes(cardId)));
-    }
+    reconcilePrivateStaging(ownCards);
     const cards = sortCardIds(ownCards, ui.sort);
     const revision = view.revision ?? snapshot.state?.revision;
     promptDrawActionsForTurn(hand, localSeatId, revision);
