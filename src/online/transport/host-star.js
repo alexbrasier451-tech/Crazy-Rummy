@@ -140,7 +140,16 @@ export function createHostStarTransport({
     if (isHost) {
       if (packet.sourcePlayerId !== remotePlayerId) return;
       if (packet.destinationPlayerId !== localPlayerId) {
-        await peers.get(packet.destinationPlayerId)?.send(copyJson(packet));
+        const destinationPeer = peers.get(packet.destinationPlayerId);
+        try {
+          await destinationPeer?.send(copyJson(packet));
+        } catch {
+          // A forwarded packet is not authoritative delivery. Ask the affected
+          // peer to recover so the sender's sync-level retry/resync can safely
+          // replay it on a fresh ordered channel.
+          try { await destinationPeer?.resume?.(); } catch {}
+          refreshState();
+        }
         return;
       }
     } else if (remotePlayerId !== hostPlayerId || packet.destinationPlayerId !== localPlayerId) {

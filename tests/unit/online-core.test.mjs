@@ -234,8 +234,12 @@ test("manual refresh replaces the pending automatic poll", async () => {
 
 function deferred() {
   let resolve;
-  const promise = new Promise((next) => { resolve = next; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((next, fail) => {
+    resolve = next;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
 }
 
 test("a late discovery response cannot overwrite a newer refresh response", async () => {
@@ -363,4 +367,121 @@ test("the UI session completes Closed-code acceptance before object-form readine
   assert.throws(() => createOnlineLobbySession({ service, player: { ...guestOne, displayName: "www.bad.example" }, ...versions }), (error) => error?.code === ONLINE_ERROR.INVALID_DISPLAY_NAME);
   hostSession.dispose();
   guestSession.dispose();
+});
+
+test("a polling refresh cannot supersede a completed join mutation or skip acceptance", async () => {
+  let resolveJoin;
+  const joined = new Promise((resolve) => { resolveJoin = resolve; });
+  const accepted = [];
+  const table = (revision, acceptedAt = null) => ({
+    tableId: "table-race-001", revision, visibility: "OPEN", hostPlayerId: host.playerId,
+    seats: [{ ...guestOne, acceptedAt, ready: false }]
+  });
+  const service = {
+    heartbeat: async () => ({ expiresAt: 10_000 }),
+    listTables: async () => ({ tables: [] }),
+    joinTable: async () => joined,
+    acceptTable: async (input) => {
+      accepted.push(input);
+      return { table: table(3, 1) };
+    }
+  };
+  const session = createOnlineLobbySession({
+    service, player: guestOne, ...versions, scheduler: createScheduler(), jitterRatio: 0
+  });
+  await session.goOnline();
+  const join = session.joinTable({ tableId: "table-race-001", revision: 1 });
+  await Promise.resolve();
+  await session.refresh();
+  resolveJoin({ table: table(2) });
+  await join;
+  assert.equal(accepted.length, 1);
+  assert.equal(session.getSnapshot().room.table.revision, 3);
+  session.dispose();
+});
+
+test("a retry retains its operation idempotency key and reconciles the accepted table", async () => {
+  const keys = [];
+  let attempts = 0;
+  const service = {
+    heartbeat: async () => ({ expiresAt: 10_000 }),
+    listTables: async () => ({ tables: [] }),
+    createTable: async (input) => {
+      keys.push(input.idempotencyKey);
+      attempts += 1;
+      if (attempts === 1) throw new OnlineLobbyError(ONLINE_ERROR.SERVICE_UNAVAILABLE, "Reply lost.", { retryable: true });
+      return { table: { tableId: "table-retry-001", revision: 1, visibility: "OPEN", hostPlayerId: host.playerId, seats: [{ ...host, acceptedAt: 1, ready: false }] } };
+    }
+  };
+  const session = createOnlineLobbySession({
+    service, player: host, ...versions, scheduler: createScheduler(), jitterRatio: 0
+  });
+  await session.goOnline();
+  await assert.rejects(session.createTable({ visibility: "OPEN", capacity: 2 }), { code: ONLINE_ERROR.SERVICE_UNAVAILABLE });
+  await session.createTable({ visibility: "OPEN", capacity: 2 });
+  assert.equal(keys[0], keys[1]);
+  assert.equal(session.getSnapshot().room.table.tableId, "table-retry-001");
+  session.dispose();
+});
+
+test("a polling refresh does not suppress an in-flight mutation error", async () => {
+  const created = deferred();
+  const service = {
+    heartbeat: async () => ({ expiresAt: 10_000 }),
+    listTables: async () => ({ tables: [] }),
+    createTable: async () => created.promise
+  };
+  const session = createOnlineLobbySession({
+    service, player: host, ...versions, scheduler: createScheduler(), jitterRatio: 0
+  });
+  await session.goOnline();
+  const create = session.createTable({ visibility: "OPEN", capacity: 2 });
+  await Promise.resolve();
+  await session.refresh();
+  created.reject(new OnlineLobbyError(ONLINE_ERROR.SERVICE_UNAVAILABLE, "Reply lost.", { retryable: true }));
+  await assert.rejects(create, { code: ONLINE_ERROR.SERVICE_UNAVAILABLE });
+  assert.equal(session.getSnapshot().error.code, ONLINE_ERROR.SERVICE_UNAVAILABLE);
+  session.dispose();
+});
+
+test("a lost lease-renewal reply reuses its key once, then a confirmed renewal rotates it", async () => {
+  const renewalInputs = [];
+  const cachedRenewals = new Map();
+  let leaseExpiresAt = 20_000;
+  let loseFirstReply = true;
+  const table = () => ({
+    tableId: "table-lease-001", revision: 1, visibility: "OPEN", hostPlayerId: host.playerId,
+    seats: [{ ...host, acceptedAt: 1, ready: false }], leaseExpiresAt
+  });
+  const service = {
+    heartbeat: async () => ({ expiresAt: 30_000 }),
+    listTables: async () => ({ tables: [] }),
+    createTable: async () => ({ table: table() }),
+    renewLease: async (input) => {
+      renewalInputs.push(input);
+      if (!cachedRenewals.has(input.idempotencyKey)) {
+        leaseExpiresAt += 10_000;
+        cachedRenewals.set(input.idempotencyKey, { table: table() });
+      }
+      if (loseFirstReply) {
+        loseFirstReply = false;
+        throw new OnlineLobbyError(ONLINE_ERROR.SERVICE_UNAVAILABLE, "Reply lost.", { retryable: true });
+      }
+      return cachedRenewals.get(input.idempotencyKey);
+    }
+  };
+  const session = createOnlineLobbySession({
+    service, player: host, ...versions, scheduler: createScheduler(), jitterRatio: 0
+  });
+  await session.goOnline();
+  await session.createTable({ visibility: "OPEN", capacity: 2 });
+  await assert.rejects(session.refresh(), { code: ONLINE_ERROR.SERVICE_UNAVAILABLE });
+  await session.refresh();
+  await session.refresh();
+  assert.equal(renewalInputs.length, 3);
+  assert.equal(renewalInputs[0].idempotencyKey, renewalInputs[1].idempotencyKey);
+  assert.notEqual(renewalInputs[1].idempotencyKey, renewalInputs[2].idempotencyKey);
+  assert.deepEqual(renewalInputs.map((input) => input.expectedRevision), [1, 1, 1]);
+  assert.equal(session.getSnapshot().room.table.leaseExpiresAt, 40_000);
+  session.dispose();
 });

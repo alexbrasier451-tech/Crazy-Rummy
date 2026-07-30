@@ -84,8 +84,8 @@ function manualScheduler() {
     return tasks.find((candidate) => !candidate.cancelled && !candidate.ran);
   }
   return {
-    setTimeout(callback) {
-      const task = { callback, cancelled: false };
+    setTimeout(callback, delay) {
+      const task = { callback, delay, cancelled: false };
       tasks.push(task);
       return task;
     },
@@ -105,7 +105,8 @@ function manualScheduler() {
         this.runNext();
         if (++count > limit) throw new Error("Scheduler did not settle.");
       }
-    }
+    },
+    pending: () => tasks.filter((candidate) => !candidate.cancelled && !candidate.ran)
   };
 }
 
@@ -297,6 +298,207 @@ test("commands retry with one stable ID, stop at a bound, and resynchronise an u
     reason: "RETRY_EXHAUSTED",
     uncertain: true
   });
+});
+
+test("gap recovery retries without a pending command and stops at a status-bearing snapshot", () => {
+  const scheduler = manualScheduler();
+  const sent = [];
+  const state = fixture();
+  const client = createClientSyncSession({
+    matchId: state.gameId,
+    seatId: "b",
+    engineSchemaVersion: SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    scheduler,
+    retry: { maximumMs: 20 },
+    send(message) { sent.push(message); }
+  });
+
+  client.receive(createEnvelope({
+    matchId: state.gameId,
+    type: SYNC_MESSAGE.SNAPSHOT,
+    messageId: "broken-snapshot",
+    sentAt: 1,
+    engineSchemaVersion: SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    payload: { authoritativeSequence: state.revision, snapshot: { revision: -1 } }
+  }));
+  assert.equal(sent.filter((message) => message.type === SYNC_MESSAGE.RESYNC_REQUEST).length, 1);
+  assert.equal(scheduler.runNext(), true, "a non-command resync should retry after loss");
+  assert.equal(sent.filter((message) => message.type === SYNC_MESSAGE.RESYNC_REQUEST).length, 2);
+
+  client.receive(createEnvelope({
+    matchId: state.gameId,
+    type: SYNC_MESSAGE.SNAPSHOT,
+    messageId: "status-snapshot",
+    sentAt: 2,
+    engineSchemaVersion: SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    payload: {
+      authoritativeSequence: state.revision,
+      snapshot: publicView(state, "b"),
+      status: { state: SYNC_STATUS.RUNNING, authoritativeSequence: state.revision }
+    }
+  }));
+  assert.equal(client.getStatus().state, SYNC_STATUS.RUNNING);
+  assert.equal(scheduler.runNext(), true, "a healthy client keeps one bounded idle status probe");
+  assert.equal(
+    sent.filter((message) => message.type === SYNC_MESSAGE.RESYNC_REQUEST).length,
+    3,
+    "the next request is a new health probe, not a retained recovery timer"
+  );
+});
+
+test("a healthy status probe retries one lost request or reply without timer overlap and stops terminally", () => {
+  const scheduler = manualScheduler();
+  const sent = [];
+  const snapshots = [];
+  const statuses = [];
+  const state = fixture();
+  const client = createClientSyncSession({
+    matchId: state.gameId,
+    seatId: "b",
+    engineSchemaVersion: SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    scheduler,
+    retry: { maximumMs: 20 },
+    send(message) { sent.push(message); },
+    onSnapshot(snapshot) { snapshots.push(snapshot); },
+    onStatus(status) { statuses.push(status); }
+  });
+  const statusSnapshot = (messageId, status) => createEnvelope({
+    matchId: state.gameId,
+    type: SYNC_MESSAGE.SNAPSHOT,
+    messageId,
+    sentAt: 1,
+    engineSchemaVersion: SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    payload: {
+      authoritativeSequence: state.revision,
+      snapshot: publicView(state, "b"),
+      status
+    }
+  });
+
+  client.receive(statusSnapshot("initial-status", {
+    state: SYNC_STATUS.RUNNING,
+    authoritativeSequence: state.revision
+  }));
+  assert.equal(snapshots.length, 1);
+  assert.equal(statuses.length, 0);
+  assert.equal(scheduler.pending().length, 1, "one idle health timer is armed");
+  assert.equal(scheduler.pending()[0].delay, 10_000, "healthy probes use their longer independent interval");
+
+  assert.equal(scheduler.runNext(), true, "the health probe is sent");
+  assert.equal(scheduler.pending().length, 1, "only its recovery retry remains after a lost probe");
+  assert.equal(scheduler.pending()[0].delay, 20, "a lost healthy probe switches to the active retry delay");
+  assert.equal(scheduler.runNext(), true, "the lost probe or reply is retried");
+  assert.equal(scheduler.pending().length, 1, "retries stay bounded to one timer");
+  assert.equal(scheduler.pending()[0].delay, 20, "active retries retain the configured maximum retry delay");
+  assert.equal(sent.filter((message) => message.type === SYNC_MESSAGE.RESYNC_REQUEST).length, 2);
+
+  client.receive(statusSnapshot("caught-up-running-status", {
+    state: SYNC_STATUS.RUNNING,
+    authoritativeSequence: state.revision
+  }));
+  assert.equal(snapshots.length, 1, "a caught-up health reply does not republish the projection");
+  assert.equal(statuses.length, 0, "a caught-up RUNNING reply does not republish status");
+  assert.equal(scheduler.pending().length, 1, "a successful reply restores exactly one idle health timer");
+  assert.equal(scheduler.pending()[0].delay, 10_000, "successful recovery returns to the healthy interval");
+
+  client.receive(statusSnapshot("terminal-status", {
+    state: SYNC_STATUS.ABANDONED,
+    authoritativeSequence: state.revision
+  }));
+  assert.equal(scheduler.pending().length, 0, "a terminal status cancels health and recovery probes");
+  assert.equal(statuses.length, 1, "a changed terminal status remains observable");
+  client.dispose();
+  assert.equal(scheduler.pending().length, 0, "dispose leaves no probe timer behind");
+});
+
+test("a rejected command re-arms the idle health probe after its final pending record clears", () => {
+  const scheduler = manualScheduler();
+  const sent = [];
+  const state = fixture();
+  const client = createClientSyncSession({
+    matchId: state.gameId,
+    seatId: "b",
+    engineSchemaVersion: SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    scheduler,
+    retry: { maximumMs: 20 },
+    send(message) { sent.push(message); }
+  });
+  client.receive(createEnvelope({
+    matchId: state.gameId,
+    type: SYNC_MESSAGE.SNAPSHOT,
+    messageId: "initial-command-status",
+    sentAt: 1,
+    engineSchemaVersion: SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    payload: {
+      authoritativeSequence: state.revision,
+      snapshot: publicView(state, "b"),
+      status: { state: SYNC_STATUS.RUNNING, authoritativeSequence: state.revision }
+    }
+  }));
+  client.submitCommand(command(
+    state,
+    COMMAND_TYPE.DEALER_INITIAL_DISCARD,
+    "b",
+    "rejected-command-probe",
+    { cardId: state.hand.handsBySeat.b[0] }
+  ));
+  client.receive(createEnvelope({
+    matchId: state.gameId,
+    type: SYNC_MESSAGE.COMMAND_RESULT,
+    messageId: "rejected-command-result",
+    sentAt: 2,
+    engineSchemaVersion: SCHEMA_VERSION,
+    rulesVersion: RULES_VERSION,
+    payload: {
+      commandId: "rejected-command-probe",
+      accepted: false,
+      reason: "ILLEGAL_COMMAND",
+      authoritativeSequence: state.revision
+    }
+  }));
+
+  assert.deepEqual(client.inspect().pendingCommandIds, []);
+  assert.equal(scheduler.pending().length, 1, "the final rejected command restores one idle probe");
+  assert.equal(scheduler.runNext(), true);
+  assert.equal(sent.at(-1).type, SYNC_MESSAGE.RESYNC_REQUEST);
+  assert.equal(sent.at(-1).payload.reason, "HEALTH_PROBE");
+});
+
+test("resync always returns authoritative status when no events are missing", () => {
+  const network = networkFixture();
+  network.deliverInitialSnapshots();
+  network.host.disconnectSeat("c");
+  network.downlink.b.length = 0;
+  network.clients.b.requestResync("LOST_RESUMED");
+  network.deliverUplink();
+  const response = network.downlink.b.find((message) =>
+    message.type === SYNC_MESSAGE.SNAPSHOT && message.payload.reason === "RESYNC_STATUS"
+  );
+  assert.ok(response, "a caught-up resync must receive a status-bearing snapshot");
+  assert.equal(response.payload.status.state, SYNC_STATUS.PAUSED);
+});
+
+test("a status snapshot reconciles a lost terminal control", () => {
+  const network = networkFixture();
+  network.deliverInitialSnapshots();
+  network.host.abandon("HOST_LEFT");
+  network.downlink.b.length = 0;
+
+  network.clients.b.requestResync("LOST_ABANDONED");
+  network.deliverUplink();
+  const response = network.downlink.b.find((message) =>
+    message.type === SYNC_MESSAGE.SNAPSHOT && message.payload.status?.state === SYNC_STATUS.ABANDONED
+  );
+  assert.ok(response);
+  network.clients.b.receive(response);
+  assert.equal(network.clients.b.getStatus().state, SYNC_STATUS.ABANDONED);
 });
 
 test("disconnect and terminal control suspend pending retries until authoritative reconciliation", () => {

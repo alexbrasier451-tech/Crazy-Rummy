@@ -38,6 +38,8 @@ export function createOnlineMatchSession({
   let commandOrdinal = 0;
   let previousTransportState = PEER_STATE.IDLE;
   let guestRebindRequested = false;
+  let guestTransportInterrupted = false;
+  let recoverySweepTimer = null;
   const interruptedPlayerIds = new Set();
   const playerToSeat = new Map(boot.seats.map((seat) => [seat.playerId, seat.seatId]));
   const seatToPlayer = new Map(boot.seats.map((seat) => [seat.seatId, seat.playerId]));
@@ -49,6 +51,33 @@ export function createOnlineMatchSession({
   });
   let sync;
   function publish() { const next = snapshot(); for (const listener of listeners) listener(next); return next; }
+  function clearRecoverySweep() {
+    if (recoverySweepTimer === null) return;
+    scheduler.clearTimeout?.(recoverySweepTimer);
+    recoverySweepTimer = null;
+  }
+  function scheduleRecoverySweep() {
+    clearRecoverySweep();
+    if (disposed) return;
+    const status = sync?.getStatus?.();
+    const sweepsAtDeadline = isHost
+      ? status?.state === "PAUSED"
+      : status?.state === "RECONNECTING";
+    if (!sweepsAtDeadline) return;
+    const deadline = isHost ? status?.recoveryDeadline : status?.hostRecoveryDeadline;
+    if (!Number.isFinite(deadline)) return;
+    const delay = Math.max(0, deadline - clock());
+    recoverySweepTimer = scheduler.setTimeout?.(() => {
+      recoverySweepTimer = null;
+      if (disposed) return;
+      sync?.sweep?.(clock());
+      projection = isHost ? playerView(sync.getState(), boot.localSeatId) : sync.getProjection?.();
+      terminal();
+      persist();
+      publish();
+      scheduleRecoverySweep();
+    }, delay) ?? null;
+  }
   function persist() {
     if (terminalReached) return;
     const record = sync?.exportRecoveryRecord?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
@@ -112,7 +141,7 @@ export function createOnlineMatchSession({
           recoveryDeadline: status.recoveryDeadline ?? null,
           terminalReason: status.terminalReason ?? null
         };
-        persist(); terminal(); publish();
+        persist(); terminal(); publish(); scheduleRecoverySweep();
       },
       onForfeit() { terminal(); }, onAbandon() { terminal(); }
     });
@@ -121,11 +150,14 @@ export function createOnlineMatchSession({
       matchId: boot.matchId, seatId: boot.localSeatId, engineSchemaVersion: boot.engineSchemaVersion, rulesVersion: boot.rulesVersion,
       send: (envelope) => topology.send(boot.hostPlayerId, envelope),
       recoveryRecord,
-      onSnapshot(next) { projection = next; sequence = next.revision; persist(); terminal(); publish(); },
+      onSnapshot(next) { projection = next; sequence = next.revision; persist(); terminal(); publish(); scheduleRecoverySweep(); },
       onStatus(status) {
-        if (status.state !== "RECONNECTING") guestRebindRequested = false;
+        if (status.state !== "RECONNECTING") {
+          guestRebindRequested = false;
+          guestTransportInterrupted = false;
+        }
         network = { ...network, state: status.state, sync: status.state, recoveryDeadline: status.hostRecoveryDeadline ?? null, terminalReason: status.terminalReason ?? null };
-        persist(); terminal(); publish();
+        persist(); terminal(); publish(); scheduleRecoverySweep();
       },
       onCommandResult(result) { lastAction = { commandId: result.commandId, phase: result.accepted === true ? "ACCEPTED" : result.accepted === false ? "REJECTED" : "UNCERTAIN", ...copy(result) }; publish(); }
     });
@@ -155,10 +187,11 @@ export function createOnlineMatchSession({
       }
     } else if (interrupted && !wasInterrupted) {
       guestRebindRequested = false;
+      guestTransportInterrupted = true;
       sync.markHostDisconnected?.(clock());
     } else if (
       value.state === PEER_STATE.CONNECTED
-      && wasInterrupted
+      && guestTransportInterrupted
       && sync.getStatus?.().state === "RECONNECTING"
       && !guestRebindRequested
     ) {
@@ -166,6 +199,7 @@ export function createOnlineMatchSession({
       sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
     }
     previousTransportState = value.state;
+    scheduleRecoverySweep();
     publish();
   });
 
@@ -201,17 +235,36 @@ export function createOnlineMatchSession({
       }, connectionTimeoutMs);
     });
   }
+  async function startTopologyWithDeadline() {
+    let timeoutId = null;
+    const deadline = new Promise((resolve, reject) => {
+      timeoutId = scheduler.setTimeout?.(() => {
+        reject(new Error("The online match transport start timed out."));
+      }, connectionTimeoutMs) ?? null;
+    });
+    try {
+      return await Promise.race([topology.start(), deadline]);
+    } finally {
+      if (timeoutId !== null) scheduler.clearTimeout?.(timeoutId);
+    }
+  }
   async function start() {
-    await topology.start();
+    await startTopologyWithDeadline();
     await waitForConnected();
     if (isHost) {
       for (const seat of boot.seats) if (seat.seatId !== boot.localSeatId) sync.sendSnapshot(seat.seatId, "INITIAL");
     } else if (recoveryRecord) {
       sync.requestRebind?.({ roomSecret: boot.roomSecret, seatSecret: boot.seatSecret });
+    } else {
+      // The host's initial snapshot is deliberately best-effort. Begin an
+      // authenticated pull immediately so a lost first delivery cannot leave
+      // a new guest with no playable projection.
+      sync.requestResync?.("INITIAL_SNAPSHOT");
     }
     network = { ...network, transport: topology.getSnapshot().state, state: sync.getStatus().state, sync: sync.getStatus().state };
     terminal();
     persist();
+    scheduleRecoverySweep();
     started = true;
     return publish();
   }
@@ -244,7 +297,7 @@ export function createOnlineMatchSession({
     if (disposed || !started || visibility.isVisible?.() === false) return undefined;
     return reconnect().catch(() => snapshot());
   }) ?? (() => {});
-  return freeze({ start, getSnapshot: snapshot, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }, submit, execute: submit, reconnect, async dispose() { if (disposed) return; disposed = true; unsubscribeVisibility(); persist(); sync.dispose?.(); await topology.close?.(); listeners.clear(); } });
+  return freeze({ start, getSnapshot: snapshot, subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }, submit, execute: submit, reconnect, async dispose() { if (disposed) return; disposed = true; clearRecoverySweep(); unsubscribeVisibility(); persist(); sync.dispose?.(); await topology.close?.(); listeners.clear(); } });
 }
 
 function defaultVisibility() {

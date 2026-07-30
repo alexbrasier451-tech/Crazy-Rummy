@@ -10,11 +10,12 @@ import {
   assertStateInvariants,
   executeCommand
 } from "../../src/engine/index.js";
-import { SYNC_MESSAGE, SYNC_STATUS } from "../../src/online/index.js";
+import { SYNC_MESSAGE, SYNC_STATUS, createOnlineMatchSession } from "../../src/online/index.js";
 import { PEER_STATE } from "../../src/online/transport/index.js";
 import {
   STAGE6_SEATS,
   createOnlineMatchFixture,
+  createStage6Bootstraps,
   createThreeSeatState
 } from "../support/online-match-fixture.mjs";
 
@@ -120,6 +121,26 @@ function dropAllTo(network, destinationPlayerId) {
   return dropped;
 }
 
+function deadlineScheduler() {
+  const tasks = [];
+  return {
+    setTimeout(callback) {
+      const task = { callback, cancelled: false, ran: false };
+      tasks.push(task);
+      return task;
+    },
+    clearTimeout(task) { task.cancelled = true; },
+    runNext() {
+      const task = tasks.find((candidate) => !candidate.cancelled && !candidate.ran);
+      if (!task) return false;
+      task.ran = true;
+      task.callback();
+      return true;
+    },
+    pending: () => tasks.filter((candidate) => !candidate.cancelled && !candidate.ran)
+  };
+}
+
 test("three-seat authority keeps actions pending until delivery and fails illegal or malformed input closed", async (t) => {
   const fixture = createOnlineMatchFixture();
   t.after(() => fixture.dispose());
@@ -201,6 +222,34 @@ test("a recovered peer link automatically pauses authority and rebinds the guest
   assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.RUNNING);
   assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
   assertConverged(fixture, "automatic transport rebind");
+});
+
+test("a guest rebind survives a DISCONNECTED to CONNECTING to CONNECTED transport path", async (t) => {
+  const fixture = createOnlineMatchFixture();
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  fixture.network.endpoint("player-a")._setState(PEER_STATE.DISCONNECTED, {
+    "player-b": PEER_STATE.DISCONNECTED,
+    "player-c": PEER_STATE.CONNECTED
+  });
+  fixture.network.endpoint("player-b")._setState(PEER_STATE.DISCONNECTED, {
+    "player-a": PEER_STATE.DISCONNECTED
+  });
+  fixture.network.endpoint("player-a")._setState(PEER_STATE.CONNECTING, {
+    "player-b": PEER_STATE.CONNECTING,
+    "player-c": PEER_STATE.CONNECTED
+  });
+  fixture.network.endpoint("player-b")._setState(PEER_STATE.CONNECTING, {
+    "player-a": PEER_STATE.CONNECTING
+  });
+  fixture.network.endpoint("player-a")._setState(PEER_STATE.CONNECTED);
+  fixture.network.endpoint("player-b")._setState(PEER_STATE.CONNECTED);
+  fixture.network.flush();
+
+  assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.RUNNING);
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
+  assertConverged(fixture, "intermediate transport rebind");
 });
 
 test("a foregrounded guest recovers when only the host observed the interruption", async (t) => {
@@ -291,6 +340,201 @@ test("a guest layoff retries lost reconciliation until the accepted action unloc
   assert.deepEqual(recovered.network.pendingCommandIds, []);
   assert.equal(recovered.view.hand.melds[0].slots.length, 4);
   assertConverged(fixture, "lost layoff acknowledgement recovery");
+});
+
+test("a lost initial snapshot is recovered by the guest bootstrap status probe", async (t) => {
+  const fixture = createOnlineMatchFixture();
+  t.after(() => fixture.dispose());
+  await fixture.start({ flush: false });
+
+  assert.ok(dropAllTo(fixture.network, "player-b") >= 1, "drop b's first snapshot delivery");
+  fixture.network.flush();
+
+  assert.ok(fixture.sessions.b.getSnapshot().view, "the bootstrap resync must restore b's projection");
+  assertConverged(fixture, "lost initial snapshot recovery");
+});
+
+test("a healthy guest heals a lone lost final event with its idle status probe", async (t) => {
+  const fixture = createOnlineMatchFixture();
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  const state = fixture.authoritativeState();
+  fixture.submit("b", COMMAND_TYPE.DEALER_INITIAL_DISCARD, {
+    clientCommandId: "lost-final-event",
+    cardId: state.hand.handsBySeat.b[0]
+  }, { flush: false });
+  fixture.network.deliverWhere((message) =>
+    message.fromPlayerId === "player-b" && message.payload?.type === SYNC_MESSAGE.COMMAND
+  );
+  assert.ok(
+    fixture.network.dropWhere(queuedEventFor(fixture.network, "c", state.revision + 1)),
+    "drop c's only event for the accepted command"
+  );
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.c.getStatus().authoritativeSequence, state.revision);
+
+  assert.equal(fixture.clientSchedulers.c.runNext(), true, "a quiet healthy guest probes authority");
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.c.getStatus().authoritativeSequence, state.revision + 1);
+  assertConverged(fixture, "lone lost final event recovery");
+});
+
+test("a healthy guest heals a lone lost PAUSED control with its idle status probe", async (t) => {
+  const fixture = createOnlineMatchFixture();
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  assert.equal(fixture.hostSync.disconnectSeat("c").ok, true);
+  assert.ok(fixture.network.dropWhere((message) =>
+    message.destinationPlayerId === "player-b"
+    && message.payload?.type === SYNC_MESSAGE.CONTROL
+    && message.payload.payload?.kind === "PAUSED"
+  ), "drop b's only PAUSED control");
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
+
+  assert.equal(fixture.clientSchedulers.b.runNext(), true, "the stale running guest probes authority");
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.PAUSED);
+});
+
+test("a healthy guest heals a lone lost terminal control with its idle status probe", async (t) => {
+  const fixture = createOnlineMatchFixture();
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  fixture.hostSync.abandon("LOST_TERMINAL_CONTROL");
+  assert.ok(fixture.network.dropWhere((message) =>
+    message.destinationPlayerId === "player-b"
+    && message.payload?.type === SYNC_MESSAGE.CONTROL
+    && message.payload.payload?.kind === "ABANDONED"
+  ), "drop b's only ABANDONED control");
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
+
+  assert.equal(fixture.clientSchedulers.b.runNext(), true, "the stale running guest probes terminal authority");
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.ABANDONED);
+  assert.equal(fixture.clientSchedulers.b.runNext(), false, "terminal status stops future health probes");
+});
+
+test("a paused guest polls authoritative status after losing RESUMED", async (t) => {
+  const fixture = createOnlineMatchFixture();
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  assert.equal(fixture.hostSync.disconnectSeat("c").ok, true);
+  fixture.network.deliverWhere((message) =>
+    message.destinationPlayerId === "player-b"
+    && message.payload?.type === SYNC_MESSAGE.CONTROL
+    && message.payload.payload?.kind === "PAUSED"
+  );
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.PAUSED);
+
+  await fixture.sessions.c.reconnect();
+  fixture.network.deliverWhere((message) =>
+    message.fromPlayerId === "player-c"
+    && message.payload?.type === SYNC_MESSAGE.REBIND_REQUEST
+  );
+  assert.ok(dropAllTo(fixture.network, "player-b") >= 1, "drop b's RESUMED control");
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.PAUSED);
+
+  assert.equal(fixture.clientSchedulers.b.runNext(), true, "paused b should schedule a status probe");
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.RUNNING);
+  assertConverged(fixture, "lost RESUMED status recovery");
+});
+
+test("a guest retries idempotent rebinds after losing both request and acceptance", async (t) => {
+  const fixture = createOnlineMatchFixture();
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  assert.equal(fixture.hostSync.disconnectSeat("c").ok, true);
+  await fixture.sessions.c.reconnect();
+  assert.ok(fixture.network.dropWhere((message) =>
+    message.fromPlayerId === "player-c" && message.payload?.type === SYNC_MESSAGE.REBIND_REQUEST
+  ), "drop the first rebind request");
+
+  assert.equal(fixture.clientSchedulers.c.runNext(), true, "rebind request should retry");
+  fixture.network.deliverWhere((message) =>
+    message.fromPlayerId === "player-c" && message.payload?.type === SYNC_MESSAGE.REBIND_REQUEST
+  );
+  assert.ok(dropAllTo(fixture.network, "player-c") >= 1, "drop rebind acceptance and resumed control");
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.c.getStatus().state, SYNC_STATUS.RECONNECTING);
+
+  assert.equal(fixture.clientSchedulers.c.runNext(), true, "lost rebind acceptance should retry");
+  fixture.network.flush();
+  assert.equal(fixture.clientSyncs.c.getStatus().state, SYNC_STATUS.RUNNING);
+  assertConverged(fixture, "lost rebind recovery");
+});
+
+test("the composed host sweeps an expired disconnected seat without a new network event", async (t) => {
+  let now = 10_000;
+  const fixture = createOnlineMatchFixture({ clock: () => now });
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  assert.equal(fixture.hostSync.disconnectSeat("c", now).ok, true);
+  now += 5 * 60 * 1_000;
+  assert.equal(fixture.sessionSchedulers.a.runNext(), true, "host deadline should be scheduled by the match session");
+  fixture.network.flush();
+
+  assert.deepEqual(fixture.hostSync.getStatus().droppedSeatIds, ["c"]);
+  assert.equal(fixture.hostSync.getStatus().state, SYNC_STATUS.RUNNING);
+  assert.equal(fixture.authoritativeState().activeSeatOrder.includes("c"), false);
+});
+
+test("a paused guest never schedules a zero-delay host-expiry sweep", async (t) => {
+  let now = 10_000;
+  const fixture = createOnlineMatchFixture({ clock: () => now });
+  t.after(() => fixture.dispose());
+  await fixture.start();
+
+  assert.equal(fixture.hostSync.disconnectSeat("c", now).ok, true);
+  now += (5 * 60 * 1_000) + 1;
+  fixture.clientSyncs.b.requestResync("PAUSED_STATUS_AFTER_DEADLINE");
+  fixture.network.flush();
+
+  assert.equal(fixture.clientSyncs.b.getStatus().state, SYNC_STATUS.PAUSED);
+  assert.equal(
+    fixture.sessionSchedulers.b.pending().length,
+    0,
+    "only a reconnecting guest owns a host-loss expiry deadline"
+  );
+});
+
+test("the match start deadline also covers a topology start that never settles", async () => {
+  const state = createThreeSeatState();
+  const scheduler = deadlineScheduler();
+  let closed = false;
+  const transport = {
+    start: () => new Promise(() => {}),
+    getSnapshot: () => ({ state: PEER_STATE.IDLE, connections: [] }),
+    subscribe: () => () => {},
+    onMessage: () => () => {},
+    async close() { closed = true; }
+  };
+  const session = createOnlineMatchSession({
+    bootstrap: createStage6Bootstraps({ matchId: state.gameId }).a,
+    playerId: "player-a",
+    initialState: state,
+    transport,
+    scheduler,
+    connectionTimeoutMs: 10,
+    recoveryStorage: { write() {}, writeComposition() {}, remove() {} }
+  });
+
+  const starting = session.start();
+  assert.equal(scheduler.pending().length, 1);
+  assert.equal(scheduler.runNext(), true);
+  await assert.rejects(starting, /transport start timed out/);
+  assert.equal(scheduler.pending().length, 0, "the timed-out start must release its deadline timer");
+  await session.dispose();
+  assert.equal(closed, true);
 });
 
 test("a thirteen-hand online match converges through delay, reorder, loss, duplication, and rebind", async (t) => {

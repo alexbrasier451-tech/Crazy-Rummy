@@ -24,6 +24,10 @@ export function createManagedSignallingAdapter({
   credentialProvider = null,
   signalTtlMs = 30_000,
   maxMessageBytes = 32_768,
+  scheduler = globalThis,
+  retryInitialMs = 250,
+  retryMaximumMs = 2_000,
+  operationTimeoutMs = 8_000,
   schemaVersion = TRANSPORT_SCHEMA_VERSION,
 } = {}) {
   if (!client || typeof client !== "object") throw invalid("A managed signalling client is required.");
@@ -38,6 +42,12 @@ export function createManagedSignallingAdapter({
   }
   if (typeof clock !== "function" || typeof createSignalId !== "function") throw invalid("Signalling dependencies are invalid.");
   if (!Number.isFinite(signalTtlMs) || signalTtlMs < 1) throw invalid("The signalling TTL is invalid.");
+  if (!scheduler || typeof scheduler.setTimeout !== "function" || typeof scheduler.clearTimeout !== "function"
+    || !Number.isFinite(retryInitialMs) || retryInitialMs < 1
+    || !Number.isFinite(retryMaximumMs) || retryMaximumMs < retryInitialMs
+    || !Number.isFinite(operationTimeoutMs) || operationTimeoutMs < 1) {
+    throw invalid("Signalling retry timing is invalid.");
+  }
 
   let state = PEER_STATE.IDLE;
   let started = false;
@@ -47,7 +57,11 @@ export function createManagedSignallingAdapter({
   let lastError = null;
   let subscribed = false;
   let subscriptionPromise = null;
+  let providerConnectPromise = null;
   let subscriptionGeneration = 0;
+  let subscriptionRetryTimer = null;
+  let subscriptionRetryAttempts = 0;
+  const providerOperations = new Set();
   const listeners = new Set();
   const signalListeners = new Set();
   const peerRoutes = new Map();
@@ -75,15 +89,7 @@ export function createManagedSignallingAdapter({
         }, { now: clock(), allowProviderManagedTurn: true });
       }
       credentialError = null;
-      ensureSubscribed().catch((cause) => {
-        if (closed) return;
-        const recoveryError = new PeerTransportError(
-          "SIGNALLING_UNAVAILABLE",
-          "Managed signalling could not restore its subscription.",
-          { retryable: true, cause },
-        );
-        transition(PEER_STATE.DISCONNECTED, recoveryError);
-      });
+      ensureSubscribed().then(clearSubscriptionRetry).catch(scheduleSubscriptionRetry);
     } catch (cause) {
       credentialError = cause;
       transition(PEER_STATE.FAILED, cause);
@@ -93,7 +99,15 @@ export function createManagedSignallingAdapter({
     subscribed = false;
     subscriptionGeneration += 1;
     subscriptionPromise = null;
-    if (!closed) transition(willReconnect ? PEER_STATE.CONNECTING : PEER_STATE.DISCONNECTED);
+    clearSubscriptionRetry();
+    if (!closed) {
+      transition(willReconnect ? PEER_STATE.CONNECTING : PEER_STATE.DISCONNECTED);
+      scheduleSubscriptionRetry(new PeerTransportError(
+        "SIGNALLING_DISCONNECTED",
+        "Managed signalling disconnected before the peer subscription could be restored.",
+        { retryable: true },
+      ));
+    }
   };
   const onMessage = ({ data } = {}) => receive(data);
   const onDirect = ({ data } = {}) => receive(data);
@@ -118,16 +132,92 @@ export function createManagedSignallingAdapter({
     if (subscribed) return Promise.resolve();
     if (subscriptionPromise) return subscriptionPromise;
     const generation = subscriptionGeneration;
-    subscriptionPromise = Promise.resolve(client.subscribe(channel))
+    subscriptionPromise = withProviderDeadline(() => client.subscribe(channel), "subscribe")
       .then(() => {
         if (closed || generation !== subscriptionGeneration) return;
         subscribed = true;
+        clearSubscriptionRetry();
         transition(PEER_STATE.CONNECTED);
       })
       .finally(() => {
         if (generation === subscriptionGeneration) subscriptionPromise = null;
       });
     return subscriptionPromise;
+  }
+
+  function ensureProviderConnectedAndSubscribed() {
+    if (closed || !started) return Promise.resolve();
+    const connected = client.state === "connected";
+    if (connected || typeof client.connect !== "function") return ensureSubscribed();
+    // Give a provider-declared automatic reconnect one bounded interval before
+    // actively calling connect again. This avoids racing its normal reconnect
+    // loop while still recovering if that loop stalls.
+    if (client.state === "connecting" && subscriptionRetryAttempts <= 1) {
+      return Promise.reject(new PeerTransportError(
+        "SIGNALLING_CONNECTING",
+        "Managed signalling is still reconnecting.",
+        { retryable: true },
+      ));
+    }
+    if (!providerConnectPromise) {
+      providerConnectPromise = withProviderDeadline(() => client.connect(), "connect")
+        .finally(() => { providerConnectPromise = null; });
+    }
+    return providerConnectPromise.then(() => ensureSubscribed());
+  }
+
+  function clearSubscriptionRetry() {
+    if (subscriptionRetryTimer !== null) scheduler.clearTimeout(subscriptionRetryTimer);
+    subscriptionRetryTimer = null;
+    subscriptionRetryAttempts = 0;
+  }
+
+  function scheduleSubscriptionRetry(cause) {
+    if (closed || !started || subscriptionRetryTimer !== null || subscribed) return;
+    const error = new PeerTransportError(
+      "SIGNALLING_UNAVAILABLE",
+      "Managed signalling could not restore its subscription.",
+      { retryable: true, cause },
+    );
+    transition(PEER_STATE.DISCONNECTED, error);
+    const delay = Math.min(retryInitialMs * (2 ** subscriptionRetryAttempts), retryMaximumMs);
+    subscriptionRetryAttempts += 1;
+    subscriptionRetryTimer = scheduler.setTimeout(() => {
+      subscriptionRetryTimer = null;
+      ensureProviderConnectedAndSubscribed().then(clearSubscriptionRetry).catch(scheduleSubscriptionRetry);
+    }, delay);
+  }
+
+  function withProviderDeadline(operation, name) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const entry = { timer: null, reject };
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        if (entry.timer !== null) scheduler.clearTimeout(entry.timer);
+        providerOperations.delete(entry);
+        callback(value);
+      };
+      entry.timer = scheduler.setTimeout(() => finish(reject, new PeerTransportError(
+        "SIGNALLING_OPERATION_TIMEOUT",
+        `Managed signalling ${name} did not settle in time.`,
+        { retryable: true },
+      )), operationTimeoutMs);
+      providerOperations.add(entry);
+      Promise.resolve().then(operation).then(
+        (value) => finish(resolve, value),
+        (cause) => finish(reject, cause),
+      );
+    });
+  }
+
+  function cancelProviderOperations() {
+    for (const entry of [...providerOperations]) {
+      if (entry.timer !== null) scheduler.clearTimeout(entry.timer);
+      providerOperations.delete(entry);
+      entry.reject(new PeerTransportError("SIGNALLING_CLOSED", "Signalling was closed while an operation was pending."));
+    }
   }
 
   async function start() {
@@ -140,7 +230,9 @@ export function createManagedSignallingAdapter({
     client.on?.("message", onMessage);
     client.on?.("direct", onDirect);
     try {
-      if (typeof client.connect === "function" && client.state !== "connected") await client.connect();
+      if (typeof client.connect === "function" && client.state !== "connected") {
+        await withProviderDeadline(() => client.connect(), "connect");
+      }
       if (credentialError) throw credentialError;
       await ensureSubscribed();
       return getSnapshot();
@@ -151,6 +243,9 @@ export function createManagedSignallingAdapter({
           retryable: true,
           cause,
         });
+      // Initial bootstrap has no established peer to recover. Preserve the
+      // start contract so the runtime can release its provider lifecycle;
+      // retry scheduling is for an already-started provider reconnect.
       transition(PEER_STATE.FAILED, error);
       throw error;
     }
@@ -172,8 +267,11 @@ export function createManagedSignallingAdapter({
     }, { maxBytes: maxMessageBytes });
     try {
       const providerPeerId = peerRoutes.get(toPlayerId);
-      if (providerPeerId && typeof client.send === "function") await client.send(providerPeerId, envelope);
-      else await client.publish(channel, envelope);
+      if (providerPeerId && typeof client.send === "function") {
+        await withProviderDeadline(() => client.send(providerPeerId, envelope), "direct send");
+      } else {
+        await withProviderDeadline(() => client.publish(channel, envelope), "publish");
+      }
       return envelope.signalId;
     } catch (cause) {
       const error = new PeerTransportError("SIGNAL_SEND_FAILED", "The peer signal could not be sent.", {
@@ -215,11 +313,16 @@ export function createManagedSignallingAdapter({
     if (closed) return;
     closed = true;
     subscriptionGeneration += 1;
+    providerConnectPromise = null;
+    clearSubscriptionRetry();
+    cancelProviderOperations();
     client.off?.("connected", onConnected);
     client.off?.("disconnected", onDisconnected);
     client.off?.("message", onMessage);
     client.off?.("direct", onDirect);
-    if (started && subscribed) await client.unsubscribe?.(channel);
+    if (started && subscribed && typeof client.unsubscribe === "function") {
+      await withProviderDeadline(() => client.unsubscribe(channel), "unsubscribe").catch(() => {});
+    }
     subscribed = false;
     transition(PEER_STATE.CLOSED);
     signalListeners.clear();

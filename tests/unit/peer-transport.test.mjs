@@ -137,6 +137,86 @@ test("managed signalling restores its channel subscription after the provider re
   await Promise.all([host.close(), guest.close()]);
 });
 
+test("managed signalling retries a transient subscription failure without another provider event", async () => {
+  const bus = new ManagedClientBus();
+  const client = bus.create("provider-guest");
+  const scheduler = createIntervalScheduler();
+  const signalling = createManagedSignallingAdapter({
+    client,
+    channel: "crazy-rummy/v1/peer/subscription-retry",
+    localPlayerId: "guest",
+    remotePlayerId: "host",
+    clock: () => 1_000,
+    scheduler,
+  });
+  await signalling.start();
+  client.failSubscribeCount = 1;
+  client.disconnect();
+  client.reconnect();
+  await settle();
+  assert.equal(signalling.getSnapshot().state, PEER_STATE.DISCONNECTED);
+  assert.equal(scheduler.runNextTimeout(), true);
+  await settle();
+  assert.equal(signalling.getSnapshot().state, PEER_STATE.CONNECTED);
+  await signalling.close();
+});
+
+test("managed signalling actively reconnects after a provider disconnect without a later connected event", async () => {
+  const bus = new ManagedClientBus();
+  const client = bus.create("provider-guest");
+  const scheduler = createIntervalScheduler();
+  const signalling = createManagedSignallingAdapter({
+    client,
+    channel: "crazy-rummy/v1/peer/provider-retry",
+    localPlayerId: "guest",
+    remotePlayerId: "host",
+    clock: () => 1_000,
+    scheduler,
+  });
+  await signalling.start();
+  const connectsBeforeLoss = client.connectCalls;
+  client.disconnect({ willReconnect: false });
+  await settle();
+  assert.equal(signalling.getSnapshot().state, PEER_STATE.DISCONNECTED);
+  assert.equal(scheduler.runNextTimeout(), true);
+  await settle();
+  assert.equal(client.connectCalls, connectsBeforeLoss + 1);
+  assert.equal(signalling.getSnapshot().state, PEER_STATE.CONNECTED);
+  await signalling.close();
+});
+
+test("a never-settling provider publish times out so later recovery traffic can proceed", async () => {
+  const bus = new ManagedClientBus();
+  const client = bus.create("provider-host");
+  const scheduler = createIntervalScheduler();
+  const signalling = createManagedSignallingAdapter({
+    client,
+    channel: "crazy-rummy/v1/peer/publish-timeout",
+    localPlayerId: "host",
+    remotePlayerId: "guest",
+    clock: () => 1_000,
+    scheduler,
+  });
+  await signalling.start();
+  client.hangNextPublish = true;
+  const stuckPublish = signalling.sendSignal({
+    matchId: MATCH,
+    toPlayerId: "guest",
+    kind: SIGNAL_KIND.RESTART,
+    payload: { reason: "recovery" },
+  });
+  assert.equal(scheduler.runNextTimeout(), true);
+  await assert.rejects(stuckPublish, { code: "SIGNAL_SEND_FAILED" });
+  await signalling.sendSignal({
+    matchId: MATCH,
+    toPlayerId: "guest",
+    kind: SIGNAL_KIND.RESTART,
+    payload: { reason: "retry" },
+  });
+  assert.equal(client.published.length, 1, "the retry must not be held behind the timed-out provider call");
+  await signalling.close();
+});
+
 test("untrusted direct traffic cannot claim the authenticated provider route", async () => {
   const bus = new ManagedClientBus();
   const hostClient = bus.create("provider-host");
@@ -349,6 +429,76 @@ test("foreground resume forces a fresh recovery epoch from either peer role", as
   await Promise.all([pair.host.close(), pair.guest.close()]);
 });
 
+test("a failed data-channel send recovers before it can create an ordered sequence hole", async () => {
+  const pair = await connectedPeerFixture();
+  const received = [];
+  pair.guest.onMessage((payload) => received.push(payload.index));
+  pair.rtc.channels.host.throwNextSend = true;
+
+  await assert.rejects(pair.host.send({ index: 1 }));
+  await settle();
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+
+  await pair.host.send({ index: 2 });
+  await settle();
+  assert.deepEqual(received, [2], "the next command must not wait for a failed wire sequence");
+  await Promise.all([pair.host.close(), pair.guest.close()]);
+});
+
+test("a connected peer with a no-longer-open channel schedules recovery before rejecting a command", async () => {
+  const pair = await connectedPeerFixture();
+  pair.rtc.channels.host.readyState = "closing";
+  await assert.rejects(pair.host.send({ index: 1 }), { code: "DATA_CHANNEL_NOT_OPEN" });
+  await settle();
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  await Promise.all([pair.host.close(), pair.guest.close()]);
+});
+
+test("a stalled inbound wire sequence forces recovery even when the peer stays otherwise live", async () => {
+  const pair = await connectedPeerFixture();
+  const received = [];
+  pair.host.onMessage((payload) => received.push(payload.index));
+  pair.rtc.channels.guest.send(JSON.stringify({
+    type: "crazy-rummy/peer-transport",
+    schemaVersion: "1",
+    kind: "event",
+    sequence: 2,
+    payload: { index: 2 },
+  }));
+  await settle();
+  assert.deepEqual(received, []);
+  assert.equal(pair.hostScheduler.runNextTimeout(), true);
+  await settle();
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  await Promise.all([pair.host.close(), pair.guest.close()]);
+});
+
+test("a lost initial offer is retried by the negotiation watchdog", async () => {
+  const pair = await connectedPeerFixture({ dropSignals: true });
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTING);
+  pair.signalling.dropSignals = false;
+  assert.equal(pair.hostScheduler.runNextTimeout(), true);
+  await settle();
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  await Promise.all([pair.host.close(), pair.guest.close()]);
+});
+
+test("an answerer retries a transient restart signal failure", async () => {
+  const pair = await connectedPeerFixture({ hostOfferer: false, hostStartsFirst: true });
+  pair.signalling.rejectNextByKind.set(SIGNAL_KIND.RESTART, 1);
+  await pair.host.resume();
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.DISCONNECTED);
+  assert.equal(pair.hostScheduler.runNextTimeout(), true);
+  await settle();
+  assert.equal(pair.host.getSnapshot().state, PEER_STATE.CONNECTED);
+  assert.equal(pair.guest.getSnapshot().state, PEER_STATE.CONNECTED);
+  await Promise.all([pair.host.close(), pair.guest.close()]);
+});
+
 test("an answerer resume revives an offerer after retryable ICE exhaustion", async () => {
   const guestScheduler = createIntervalScheduler();
   const pair = await connectedPeerFixture({
@@ -515,6 +665,25 @@ test("host-star topology accepts two seats", async () => {
   await topology.close();
 });
 
+test("a host-star forwarding failure asks the destination link to recover", async () => {
+  const peerBus = createTopologyPeerBus();
+  const seats = ["host", "g1", "g2"];
+  const topologies = Object.fromEntries(seats.map((localPlayerId) => [localPlayerId,
+    createHostStarTransport({
+      matchId: MATCH,
+      localPlayerId,
+      hostPlayerId: "host",
+      seatPlayerIds: seats,
+      createPeer(options) { return peerBus.create(options); },
+    })
+  ]));
+  await Promise.all(Object.values(topologies).map((topology) => topology.start()));
+  peerBus.failNextSend("host", "g2");
+  await topologies.g1.send("g2", { index: 1 });
+  assert.equal(peerBus.resumeCount("host", "g2"), 1);
+  await Promise.all(Object.values(topologies).map((topology) => topology.close()));
+});
+
 class ManagedClientBus {
   constructor() {
     this.clients = [];
@@ -535,20 +704,24 @@ class FakeManagedClient {
     this.channels = new Set();
     this.published = [];
     this.unsubscribed = [];
+    this.failSubscribeCount = 0;
+    this.connectCalls = 0;
+    this.hangNextPublish = false;
   }
   on(type, listener) { this.handlers.set(type, listener); return this; }
   off(type, listener) { if (this.handlers.get(type) === listener) this.handlers.delete(type); return this; }
   async connect() {
+    this.connectCalls += 1;
     this.state = "connected";
     this.handlers.get("connected")?.({
       iceServers: [{ urls: "turn:relay.example:3478", username: "temporary", credential: "temporary" }],
       expiresAt: null,
     });
   }
-  disconnect() {
+  disconnect({ willReconnect = true } = {}) {
     this.state = "disconnected";
     this.channels.clear();
-    this.handlers.get("disconnected")?.({ willReconnect: true });
+    this.handlers.get("disconnected")?.({ willReconnect });
   }
   reconnect() {
     this.state = "connected";
@@ -557,9 +730,19 @@ class FakeManagedClient {
       expiresAt: null,
     });
   }
-  async subscribe(channel) { this.channels.add(channel); }
+  async subscribe(channel) {
+    if (this.failSubscribeCount > 0) {
+      this.failSubscribeCount -= 1;
+      throw new Error("transient subscribe failure");
+    }
+    this.channels.add(channel);
+  }
   async unsubscribe(channel) { this.unsubscribed.push(channel); this.channels.delete(channel); }
   async publish(channel, data) {
+    if (this.hangNextPublish) {
+      this.hangNextPublish = false;
+      return new Promise(() => {});
+    }
     this.published.push({ channel, data });
     for (const target of this.bus.clients) {
       if (target !== this && target.channels.has(channel)) {
@@ -574,7 +757,7 @@ class FakeManagedClient {
 }
 
 function createSignalPair() {
-  const endpoints = { sent: [], dropSignals: false };
+  const endpoints = { sent: [], dropSignals: false, rejectNextByKind: new Map() };
   let id = 0;
   function endpoint(localPlayerId, remotePlayerId) {
     const listeners = new Set();
@@ -604,6 +787,11 @@ function createSignalPair() {
           expiresAt: createdAt + 30_000,
         });
         endpoints.sent.push(envelope);
+        const remainingFailures = endpoints.rejectNextByKind.get(kind) ?? 0;
+        if (remainingFailures > 0) {
+          endpoints.rejectNextByKind.set(kind, remainingFailures - 1);
+          throw new Error(`Transient ${kind} signal failure`);
+        }
         if (endpoints.dropSignals) return;
         queueMicrotask(() => {
           for (const listener of endpoints[remotePlayerId].listeners) listener(envelope);
@@ -635,9 +823,14 @@ class FakeDataChannel extends FakeEventTarget {
     this.readyState = "connecting";
     this.ordered = true;
     this.peer = null;
+    this.throwNextSend = false;
   }
   send(data) {
     if (this.readyState !== "open") throw new Error("channel closed");
+    if (this.throwNextSend) {
+      this.throwNextSend = false;
+      throw new Error("transient channel send failure");
+    }
     queueMicrotask(() => this.peer?.emit("message", { data }));
   }
   open() { this.readyState = "open"; this.emit("open"); }
@@ -755,10 +948,12 @@ async function connectedPeerFixture({
   hostOfferer = true,
   hostStartsFirst = false,
   maximumIceRestartAttempts,
+  dropSignals = false,
   hostScheduler = createIntervalScheduler(),
   guestScheduler = createIntervalScheduler(),
 } = {}) {
   const signalling = createSignalPair();
+  signalling.dropSignals = dropSignals;
   const rtc = createRtcPair();
   const verify = (expectedPlayerId) => ({ remotePlayerId, seatProof }) =>
     remotePlayerId === expectedPlayerId && seatProof === PROOFS[expectedPlayerId];
@@ -801,16 +996,21 @@ async function connectedPeerFixture({
     await Promise.all([guest.start(), host.start()]);
   }
   await settle();
-  assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
+  if (!dropSignals) assert.equal(host.getSnapshot().state, PEER_STATE.CONNECTED);
   return { host, guest, rtc, signalling, hostScheduler, guestScheduler };
 }
 
 function createTopologyPeerBus() {
   const endpoints = new Map();
   const resumeCounts = new Map();
+  const failures = new Map();
   return {
     resumeCount(localPlayerId, remotePlayerId) {
       return resumeCounts.get(`${localPlayerId}->${remotePlayerId}`) ?? 0;
+    },
+    failNextSend(localPlayerId, remotePlayerId) {
+      const key = `${localPlayerId}->${remotePlayerId}`;
+      failures.set(key, (failures.get(key) ?? 0) + 1);
     },
     create(options) {
       let state = PEER_STATE.IDLE;
@@ -823,6 +1023,11 @@ function createTopologyPeerBus() {
           for (const listener of states) listener({ state });
         },
         async send(payload) {
+          const remainingFailures = failures.get(key) ?? 0;
+          if (remainingFailures > 0) {
+            failures.set(key, remainingFailures - 1);
+            throw new Error("transient forwarding failure");
+          }
           const remote = endpoints.get(`${options.remotePlayerId}->${options.localPlayerId}`);
           for (const listener of remote.messages) await listener(structuredClone(payload));
         },

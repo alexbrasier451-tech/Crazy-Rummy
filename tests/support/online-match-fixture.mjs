@@ -292,24 +292,30 @@ export function withoutPrivateHand(view) {
 export function createOnlineMatchFixture({
   state = createThreeSeatState(),
   network = createControlledTopologyNetwork(),
-  visibilityBySeat = {}
+  visibilityBySeat = {},
+  clock = () => Date.now()
 } = {}) {
   const bootstraps = createStage6Bootstraps({ matchId: state.gameId });
   const sessions = {};
   const clientSchedulers = {};
+  const sessionSchedulers = {};
   let hostSync = null;
   const clientSyncs = {};
   const storage = noopRecoveryStorage();
 
   for (const seat of STAGE6_SEATS) {
     const scheduler = quietScheduler();
+    const sessionScheduler = quietScheduler();
     clientSchedulers[seat.seatId] = scheduler;
+    sessionSchedulers[seat.seatId] = sessionScheduler;
     sessions[seat.seatId] = createOnlineMatchSession({
       bootstrap: bootstraps[seat.seatId],
       playerId: seat.playerId,
       initialState: seat.seatId === "a" ? state : undefined,
       transport: network.endpoint(seat.playerId),
       visibility: visibilityBySeat[seat.seatId],
+      clock,
+      scheduler: sessionScheduler,
       recoveryStorage: storage,
       createHostSession(options) {
         hostSync = createHostSyncSession(options);
@@ -330,11 +336,12 @@ export function createOnlineMatchFixture({
     network,
     recoveryStorage: storage,
     clientSchedulers,
+    sessionSchedulers,
     get hostSync() { return hostSync; },
     clientSyncs,
-    async start() {
+    async start({ flush = true } = {}) {
       await Promise.all(Object.values(sessions).map((session) => session.start()));
-      network.flush();
+      if (flush) network.flush();
       return this;
     },
     authoritativeState() {

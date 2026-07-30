@@ -108,6 +108,106 @@ test("injected SignallingClient bridge correlates a conditional host-authoritati
   await Promise.all([host.close(), guest.close()]);
 });
 
+test("bridge timeout covers a stalled connection before any reply can be pending", async () => {
+  class HangingClient {
+    constructor() { this.handlers = new Map(); this.state = "idle"; }
+    on(event, callback) { this.handlers.set(event, callback); }
+    off() {}
+    connect() { return new Promise(() => {}); }
+    subscribe() { throw new Error("subscribe must not run before connect"); }
+    publish() { throw new Error("publish must not run before connect"); }
+  }
+  const bridge = createMeteredRealtimeRequestClient({
+    SignallingClient: HangingClient, publicKey: KEY, installationId: "hanging-client", requestTimeoutMs: 15,
+  });
+  await assert.rejects(
+    bridge.request({ requestId: "request-hanging", operation: "getTable", channel: "crazy-rummy/v1/host/table" }),
+    (error) => error?.code === "METERED_OFFLINE" && error.retryable,
+  );
+  await bridge.close();
+});
+
+test("bridge clears subscription truth on disconnect and resubscribes before the next local request", async () => {
+  FakeSignallingClient.reset();
+  const bridge = createMeteredRealtimeRequestClient({
+    SignallingClient: FakeSignallingClient,
+    publicKey: KEY,
+    installationId: "resubscribe-client",
+    hostHandler: async () => ({ table: { tableId: "table_resub", providerScope: "crazy-rummy/v1/host/table_resub" } }),
+    shouldHandleLocally: () => true,
+  });
+  const envelope = (requestId) => ({ requestId, operation: "createTable", channel: "crazy-rummy/v1/open-index" });
+  await bridge.request(envelope("request-resub-one"));
+  bridge.client.state = "idle";
+  bridge.client.handlers.get("disconnected")?.({});
+  await bridge.request(envelope("request-resub-two"));
+  assert.equal(bridge.client.calls.filter((call) => call === "subscribe:crazy-rummy/v1/open-index").length, 2);
+  await bridge.close();
+});
+
+test("bridge ignores wrong-channel and known-wrong-authority replies", async () => {
+  FakeSignallingClient.reset();
+  const bridge = createMeteredRealtimeRequestClient({
+    SignallingClient: FakeSignallingClient, publicKey: KEY, installationId: "reply-guard", discoveryWindowMs: 50,
+  });
+  const message = (channel, installationId, requestId, value) => bridge.client.handlers.get("message")?.({
+    channel,
+    from: installationId,
+    data: { type: "crazy-rummy/lobby-response", requestId, toInstallationId: "reply-guard", installationId, channel, value }
+  });
+  const discovery = bridge.request({ requestId: "discover-guard", operation: "listTables", channel: "crazy-rummy/v1/open-index" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  message("crazy-rummy/v1/open-index", "host-authority", "discover-guard", {
+    tables: [{ tableId: "table_guard", visibility: "OPEN", providerScope: "crazy-rummy/v1/host/table_guard" }]
+  });
+  await discovery;
+
+  let settled = false;
+  const request = bridge.request({ requestId: "request-guard", operation: "getTable", channel: "crazy-rummy/v1/host/table_guard" })
+    .then((value) => { settled = true; return value; });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  message("crazy-rummy/v1/wrong", "host-authority", "request-guard", { table: { tableId: "wrong" } });
+  message("crazy-rummy/v1/host/table_guard", "other-authority", "request-guard", { table: { tableId: "wrong" } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(settled, false);
+  message("crazy-rummy/v1/host/table_guard", "host-authority", "request-guard", { table: { tableId: "table_guard" } });
+  assert.equal((await request).value.table.tableId, "table_guard");
+  await bridge.close();
+});
+
+test("a lost reply retry uses the supplied idempotency key and commits creation once", async () => {
+  const authority = createMeteredHostTableService({
+    requestRateLimitMs: 0,
+    leaseMs: 10_000,
+    createTableId: () => "table_loss_001",
+  });
+  const keys = [];
+  let first = true;
+  const provider = createMeteredLobbyProvider({
+    config: { ...CONFIG, rateLimitMs: { ...CONFIG.rateLimitMs, createTable: 0 } },
+    client: {
+      async request(envelope) {
+        keys.push(envelope.mutation?.idempotencyKey);
+        const value = await authority.handle(envelope);
+        if (first) {
+          first = false;
+          throw new MeteredProviderError("METERED_OFFLINE", "Reply lost.", { retryable: true });
+        }
+        return { ok: true, value };
+      }
+    }
+  });
+  const input = {
+    host: { playerId: "host_loss", displayName: "Host" }, visibility: "OPEN", capacity: 2,
+    protocolVersion: "v1", rulesVersion: "r1", idempotencyKey: "create-loss-once"
+  };
+  await assert.rejects(provider.createTable(input), { code: "METERED_OFFLINE" });
+  const retried = await provider.createTable(input);
+  assert.deepEqual(keys, ["create-loss-once", "create-loss-once"]);
+  assert.equal(retried.table.tableId, "table_loss_001");
+  assert.equal(authority.inspect().tables.length, 1);
+});
+
 test("host creates, advertises, conditionally seats, and expires a transient Open table through two clients", async () => {
   FakeSignallingClient.reset();
   let time = 1_000;
@@ -363,3 +463,39 @@ class FakeSignallingClient {
     this.state = "closed";
   }
 }
+
+class StalledAdvertisementClient extends FakeSignallingClient {
+  constructor(options) {
+    super(options);
+    this.stallNextAdvertisement = true;
+  }
+  async publish(channel, data) {
+    if (this.stallNextAdvertisement && data?.type === "crazy-rummy/table-advertisement") {
+      this.stallNextAdvertisement = false;
+      this.assertConnected("publish");
+      this.calls.push(`publish:${channel}`);
+      this.published.push({ channel, data });
+      return new Promise(() => {});
+    }
+    return super.publish(channel, data);
+  }
+}
+
+test("stalled public-table advertisement times out retryably and a later retry can publish", async () => {
+  FakeSignallingClient.reset();
+  const bridge = createMeteredRealtimeRequestClient({
+    SignallingClient: StalledAdvertisementClient,
+    publicKey: KEY,
+    installationId: "stalled-advertiser",
+    requestTimeoutMs: 20,
+    discoveryWindowMs: 50,
+  });
+  const table = { tableId: "open_timeout_1", visibility: "OPEN" };
+  await assert.rejects(
+    bridge.advertiseTable(table),
+    (error) => error?.code === "METERED_OFFLINE" && error.retryable === true,
+  );
+  await bridge.advertiseTable(table);
+  assert.equal(bridge.client.published.filter((entry) => entry.data.type === "crazy-rummy/table-advertisement").length, 2);
+  await bridge.close();
+});

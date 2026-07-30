@@ -16,7 +16,13 @@ import {
 
 function defaultScheduler() {
   return {
-    setTimeout: (callback, delay) => globalThis.setTimeout(callback, delay),
+    setTimeout(callback, delay) {
+      const handle = globalThis.setTimeout(callback, delay);
+      // Node test and relay processes must not be retained solely by an idle
+      // health check. Browser timeout handles do not expose unref().
+      handle?.unref?.();
+      return handle;
+    },
     clearTimeout: (handle) => globalThis.clearTimeout(handle)
   };
 }
@@ -35,6 +41,7 @@ export function createClientSyncSession({
   clock = () => Date.now(),
   scheduler = defaultScheduler(),
   retry = {},
+  healthyProbeIntervalMs = 10_000,
   disconnectTimeoutMs = DEFAULT_DISCONNECT_TIMEOUT_MS,
   maxBufferedEvents = 32,
   fingerprintCommand = defaultCommandFingerprint,
@@ -57,6 +64,9 @@ export function createClientSyncSession({
   const maximumAttempts = Number.isInteger(retry.maximumAttempts) && retry.maximumAttempts > 0
     ? retry.maximumAttempts
     : 4;
+  const healthyProbeDelay = Number.isFinite(healthyProbeIntervalMs) && healthyProbeIntervalMs > 0
+    ? healthyProbeIntervalMs
+    : 10_000;
   const bufferLimit = Number.isInteger(maxBufferedEvents) && maxBufferedEvents > 0 ? maxBufferedEvents : 32;
   const timeout = Number.isFinite(disconnectTimeoutMs) && disconnectTimeoutMs > 0
     ? disconnectTimeoutMs
@@ -70,6 +80,10 @@ export function createClientSyncSession({
   let hostRecoveryDeadline = null;
   let terminalReason = null;
   let reconciliationTimer = null;
+  let recoveryTimer = null;
+  let healthProbeTimer = null;
+  let needsStatusResync = recovered?.projection == null;
+  let rebindCredentials = null;
   const pending = new Map();
   const completedCommands = new Set();
   const eventBuffer = new Map();
@@ -138,6 +152,10 @@ export function createClientSyncSession({
   }
 
   function requestResync(reason = "SEQUENCE_GAP") {
+    // A resync has its own loss-retry loop.  Do not leave an idle health probe
+    // armed beside it, or an isolated lost reply would grow two probe streams.
+    clearHealthProbe();
+    needsStatusResync = true;
     const pendingCommands = [...pending.values()]
       .filter((record) => record.status === "UNCERTAIN")
       .map((record) => ({
@@ -150,6 +168,108 @@ export function createClientSyncSession({
       pendingCommands
     }));
     if (pendingCommands.length > 0) scheduleReconciliationRetry();
+    scheduleRecoveryRetry();
+  }
+
+  function clearRecoveryRetry() {
+    if (recoveryTimer === null) return;
+    scheduler.clearTimeout(recoveryTimer);
+    recoveryTimer = null;
+  }
+
+  function clearHealthProbe() {
+    if (healthProbeTimer === null) return;
+    scheduler.clearTimeout(healthProbeTimer);
+    healthProbeTimer = null;
+  }
+
+  function terminal() {
+    return [SYNC_STATUS.FORFEIT, SYNC_STATUS.ABANDONED].includes(connectionState);
+  }
+
+  function shouldRecoverStatus() {
+    return !terminal() && (
+      needsStatusResync
+      || projection === null
+      || connectionState === SYNC_STATUS.PAUSED
+      || connectionState === SYNC_STATUS.RECONNECTING
+    );
+  }
+
+  function shouldProbeHealth() {
+    return !terminal()
+      && connectionState === SYNC_STATUS.RUNNING
+      && projection !== null
+      && !needsStatusResync
+      && pending.size === 0;
+  }
+
+  function sendRebindRequest() {
+    if (!rebindCredentials) return false;
+    return transmit(envelope(SYNC_MESSAGE.REBIND_REQUEST, {
+      roomSecret: rebindCredentials.roomSecret,
+      seatSecret: rebindCredentials.seatSecret,
+      lastSequence: authoritativeSequence
+    }));
+  }
+
+  // Recovery state is pull-based so a lost host delivery cannot strand an
+  // otherwise healthy data channel. A rebind remains idempotent until the
+  // host confirms it; every other probe is a normal authenticated resync.
+  function scheduleRecoveryRetry() {
+    if (recoveryTimer !== null || !shouldRecoverStatus()) return;
+    recoveryTimer = scheduler.setTimeout(() => {
+      recoveryTimer = null;
+      if (!shouldRecoverStatus()) return;
+      if (connectionState === SYNC_STATUS.RECONNECTING && rebindCredentials) {
+        sendRebindRequest();
+      } else {
+        requestResync("STATUS_RECOVERY");
+      }
+      scheduleRecoveryRetry();
+    }, maximumRetryMs);
+  }
+
+  // A quiet healthy connection still needs a bounded authoritative check:
+  // losing the final EVENT or CONTROL otherwise produces no sequence gap and
+  // leaves the guest stale indefinitely.  Once this probe is sent, the normal
+  // recovery loop owns retries until a status-bearing snapshot arrives.
+  function scheduleHealthProbe() {
+    if (healthProbeTimer !== null || !shouldProbeHealth()) return;
+    healthProbeTimer = scheduler.setTimeout(() => {
+      healthProbeTimer = null;
+      if (!shouldProbeHealth()) return;
+      requestResync("HEALTH_PROBE");
+    }, healthyProbeDelay);
+  }
+
+  function applyHostStatus(value) {
+    if (!isRecord(value) || !Object.values(SYNC_STATUS).includes(value.state)) return false;
+    if (!Number.isInteger(value.authoritativeSequence) || value.authoritativeSequence < authoritativeSequence) {
+      return false;
+    }
+    connectionState = value.state;
+    hostRecoveryDeadline = Number.isFinite(value.recoveryDeadline) ? value.recoveryDeadline : null;
+    if (connectionState === SYNC_STATUS.RUNNING) {
+      terminalReason = null;
+      rebindCredentials = null;
+      needsStatusResync = false;
+      reconcilePendingCommands("AUTHORITATIVE_STATUS");
+    } else if (connectionState === SYNC_STATUS.PAUSED) {
+      suspendPendingRetries();
+    } else if (terminal()) {
+      terminalReason = connectionState === SYNC_STATUS.FORFEIT ? "FORFEIT" : "HOST_LOST";
+      rebindCredentials = null;
+      needsStatusResync = false;
+      suspendPendingRetries();
+      clearRecoveryRetry();
+    }
+    if (connectionState === SYNC_STATUS.RUNNING) scheduleHealthProbe();
+    else {
+      clearHealthProbe();
+      scheduleRecoveryRetry();
+    }
+    return true;
   }
 
   function clearReconciliationRetry() {
@@ -185,6 +305,7 @@ export function createClientSyncSession({
     if (![...pending.values()].some((entry) => entry.status === "UNCERTAIN")) {
       clearReconciliationRetry();
     }
+    if (pending.size === 0) scheduleHealthProbe();
     return record;
   }
 
@@ -252,24 +373,53 @@ export function createClientSyncSession({
       reconciliationRequested: false
     };
     pending.set(record.commandId, record);
+    // Command acknowledgement/reconciliation owns progress while an action is
+    // outstanding; defer the idle probe so its timer cannot pre-empt command
+    // retry ordering.
+    clearHealthProbe();
     transmit(outgoing);
     scheduleRetry(record);
     return freeze({ queued: true, duplicate: false, commandId: record.commandId });
   }
 
-  function acceptSnapshot(snapshot, sequence, reason, { drain = true } = {}) {
+  function acceptSnapshot(snapshot, sequence, reason, { drain = true, status: hostStatus = null } = {}) {
     if (!isRecord(snapshot) || !Number.isInteger(snapshot.revision) || snapshot.revision !== sequence) {
       requestResync("INVALID_SNAPSHOT");
       return false;
     }
     if (sequence < authoritativeSequence) return false;
-    projection = freeze(clone(snapshot));
-    authoritativeSequence = sequence;
+    const projectionChanged = projection === null || sequence > authoritativeSequence;
+    const previousStatus = {
+      state: connectionState,
+      hostRecoveryDeadline,
+      terminalReason
+    };
+    if (projectionChanged) {
+      projection = freeze(clone(snapshot));
+      authoritativeSequence = sequence;
+    }
+    // A normal initial snapshot predates status-bearing snapshots in saved
+    // records/tests; it is still sufficient to end bootstrap recovery. A
+    // supplied status additionally repairs lost PAUSED/RESUMED/terminal state.
+    needsStatusResync = false;
+    const appliedHostStatus = applyHostStatus(hostStatus);
+    const statusChanged = appliedHostStatus && (
+      connectionState !== previousStatus.state
+      || hostRecoveryDeadline !== previousStatus.hostRecoveryDeadline
+      || terminalReason !== previousStatus.terminalReason
+    );
     for (const bufferedSequence of [...eventBuffer.keys()]) {
       if (bufferedSequence <= sequence) eventBuffer.delete(bufferedSequence);
     }
-    onSnapshot?.(projection, freeze({ reason, authoritativeSequence }));
+    if (projectionChanged) onSnapshot?.(projection, freeze({ reason, authoritativeSequence }));
+    if (statusChanged) publishStatus({ snapshotStatus: clone(hostStatus) });
     if (drain) drainBufferedEvents();
+    if (shouldRecoverStatus()) scheduleRecoveryRetry();
+    else clearRecoveryRetry();
+    if (shouldProbeHealth()) {
+      clearHealthProbe();
+      scheduleHealthProbe();
+    } else clearHealthProbe();
     return true;
   }
 
@@ -354,27 +504,48 @@ export function createClientSyncSession({
       case "PAUSED":
         connectionState = SYNC_STATUS.PAUSED;
         suspendPendingRetries();
+        clearHealthProbe();
+        scheduleRecoveryRetry();
         break;
       case "RESUMED":
         connectionState = SYNC_STATUS.RUNNING;
         hostRecoveryDeadline = null;
+        rebindCredentials = null;
+        needsStatusResync = false;
+        clearRecoveryRetry();
         reconcilePendingCommands("SESSION_RESUMED");
+        scheduleHealthProbe();
         break;
       case "SEAT_DROPPED":
         connectionState = incoming.payload.status?.state === SYNC_STATUS.PAUSED
           ? SYNC_STATUS.PAUSED
           : SYNC_STATUS.RUNNING;
         if (connectionState === SYNC_STATUS.RUNNING) hostRecoveryDeadline = null;
+        if (connectionState === SYNC_STATUS.RUNNING) {
+          rebindCredentials = null;
+          needsStatusResync = false;
+          clearRecoveryRetry();
+          scheduleHealthProbe();
+        } else {
+          clearHealthProbe();
+          scheduleRecoveryRetry();
+        }
         break;
       case "FORFEIT":
         connectionState = SYNC_STATUS.FORFEIT;
         terminalReason = "FORFEIT";
         suspendPendingRetries();
+        rebindCredentials = null;
+        clearRecoveryRetry();
+        clearHealthProbe();
         break;
       case "ABANDONED":
         connectionState = SYNC_STATUS.ABANDONED;
         terminalReason = incoming.payload.reason ?? "HOST_LOST";
         suspendPendingRetries();
+        rebindCredentials = null;
+        clearRecoveryRetry();
+        clearHealthProbe();
         break;
       default:
         return { ok: false, reason: SYNC_REJECTION.INVALID_MESSAGE };
@@ -400,19 +571,34 @@ export function createClientSyncSession({
         const applied = acceptSnapshot(
           incoming.payload.snapshot,
           incoming.payload.authoritativeSequence,
-          incoming.payload.reason ?? "SNAPSHOT"
+          incoming.payload.reason ?? "SNAPSHOT",
+          { status: incoming.payload.status }
         );
         if (applied) acknowledge("SNAPSHOT", incoming.messageId);
         return freeze({ ok: applied });
       }
       case SYNC_MESSAGE.REBIND_ACCEPTED:
         if (incoming.payload.accepted) {
-          connectionState = incoming.payload.status?.state ?? SYNC_STATUS.RUNNING;
-          hostRecoveryDeadline = null;
-          terminalReason = null;
-          reconcilePendingCommands("REBIND_ACCEPTED");
+          rebindCredentials = null;
+          needsStatusResync = false;
+          if (!applyHostStatus(incoming.payload.status)) {
+            connectionState = SYNC_STATUS.RUNNING;
+            hostRecoveryDeadline = null;
+            terminalReason = null;
+            reconcilePendingCommands("REBIND_ACCEPTED");
+          }
+          clearRecoveryRetry();
+          scheduleHealthProbe();
           publishStatus({ rebind: clone(incoming.payload) });
         } else {
+          rebindCredentials = null;
+          clearRecoveryRetry();
+          if (incoming.payload.reason === SYNC_REJECTION.REBIND_EXPIRED) {
+            connectionState = SYNC_STATUS.ABANDONED;
+            terminalReason = "HOST_LOST";
+            suspendPendingRetries();
+          }
+          clearHealthProbe();
           publishStatus({ rebind: clone(incoming.payload) });
         }
         return freeze({ ok: true, accepted: Boolean(incoming.payload.accepted) });
@@ -427,6 +613,9 @@ export function createClientSyncSession({
     if ([SYNC_STATUS.FORFEIT, SYNC_STATUS.ABANDONED].includes(connectionState)) return status();
     connectionState = SYNC_STATUS.RECONNECTING;
     hostRecoveryDeadline = at + timeout;
+    rebindCredentials = null;
+    clearRecoveryRetry();
+    clearHealthProbe();
     suspendPendingRetries();
     return publishStatus({ reason: "HOST_DISCONNECTED" });
   }
@@ -448,11 +637,11 @@ export function createClientSyncSession({
       throw new TypeError("Room and seat resume secrets are required.");
     }
     connectionState = SYNC_STATUS.RECONNECTING;
-    transmit(envelope(SYNC_MESSAGE.REBIND_REQUEST, {
-      roomSecret,
-      seatSecret,
-      lastSequence: authoritativeSequence
-    }));
+    rebindCredentials = { roomSecret, seatSecret };
+    clearHealthProbe();
+    needsStatusResync = true;
+    sendRebindRequest();
+    scheduleRecoveryRetry();
     return publishStatus({ reason: "REBIND_REQUESTED" });
   }
 
@@ -469,6 +658,9 @@ export function createClientSyncSession({
         if (record.timer !== null) scheduler.clearTimeout(record.timer);
       }
       clearReconciliationRetry();
+      clearRecoveryRetry();
+      clearHealthProbe();
+      rebindCredentials = null;
       pending.clear();
       return publishStatus({ reason: "HOST_RECOVERY_EXPIRED" });
     }
@@ -513,6 +705,10 @@ export function createClientSyncSession({
 
   function clearRecovery() {
     clearReconciliationRetry();
+    clearRecoveryRetry();
+    clearHealthProbe();
+    rebindCredentials = null;
+    needsStatusResync = true;
     for (const record of pending.values()) {
       if (record.timer !== null) scheduler.clearTimeout(record.timer);
     }
@@ -525,6 +721,9 @@ export function createClientSyncSession({
 
   function dispose() {
     clearReconciliationRetry();
+    clearRecoveryRetry();
+    clearHealthProbe();
+    rebindCredentials = null;
     for (const record of pending.values()) {
       if (record.timer !== null) scheduler.clearTimeout(record.timer);
       record.timer = null;

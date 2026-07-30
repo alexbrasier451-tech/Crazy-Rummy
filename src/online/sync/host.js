@@ -224,7 +224,11 @@ export function createHostSyncSession({
     return envelope(SYNC_MESSAGE.SNAPSHOT, {
       authoritativeSequence: state.revision,
       reason,
-      snapshot: snapshotFor(state, seatId)
+      snapshot: snapshotFor(state, seatId),
+      // A snapshot is also the authoritative answer to a status probe.  Event
+      // replay alone cannot heal a lost PAUSED, RESUMED, or terminal control
+      // once the recipient is already at the current sequence.
+      status: status()
     }, `snapshot:${seatId}`);
   }
 
@@ -403,6 +407,10 @@ export function createHostSyncSession({
 
   function handleResync(seatId, payload) {
     const mode = catchUp(seatId, payload.lastSequence, "SEQUENCE_GAP");
+    // Always answer a resync with the current projection and status.  In the
+    // caught-up case catchUp deliberately has no event to send, which used to
+    // leave a client that missed a control message permanently paused.
+    deliverOne(seatId, snapshotMessage(seatId, "RESYNC_STATUS"));
     const pendingCommands = Array.isArray(payload.pendingCommands)
       ? payload.pendingCommands
         .filter((record) =>
@@ -481,13 +489,13 @@ export function createHostSyncSession({
     seat.disconnectedAt = null;
     seat.recoveryDeadline = null;
     const mode = catchUp(seatId, payload.lastSequence, "REBIND");
+    recomputePause("SEAT_REBOUND", seatId);
     deliverOne(seatId, envelope(SYNC_MESSAGE.REBIND_ACCEPTED, {
       accepted: true,
       authoritativeSequence: state.revision,
       catchUp: mode,
       status: status()
     }, `rebind-accepted:${seatId}`));
-    recomputePause("SEAT_REBOUND", seatId);
     return freeze({ ok: true, mode });
   }
 

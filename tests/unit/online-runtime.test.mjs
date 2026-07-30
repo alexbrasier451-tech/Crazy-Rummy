@@ -172,3 +172,49 @@ test("remote peer closure releases the configured provider lifecycle", async () 
   assert.equal(WorkingSignallingClient.latest.closed, true);
   assert.equal(WorkingSignallingClient.latest.handlers.size, 0);
 });
+
+class HangingCleanupSignallingClient extends WorkingSignallingClient {
+  async unsubscribe() { return new Promise(() => {}); }
+  async close() { return new Promise(() => {}); }
+}
+
+test("configured peer close releases local resources when provider cleanup never settles", async () => {
+  const providerScheduler = createTimeoutScheduler();
+  const peer = createConfiguredPeerConnection({
+    publicKey: "pk_live_test",
+    SignallingClientClass: HangingCleanupSignallingClient,
+    rtcPeerConnectionFactory: () => new PassiveRtcConnection(),
+    matchId: "runtime-close-timeout",
+    channel: "crazy-rummy/v1/peer/runtime-close-timeout",
+    localPlayerId: "host",
+    remotePlayerId: "guest",
+    offerer: false,
+    localSeatProof: "runtime-host-seat-proof-000001",
+    verifyRemoteSeatProof: () => true,
+    providerScheduler,
+    providerCloseTimeoutMs: 1,
+  });
+  await peer.start();
+  const closing = peer.close();
+  assert.equal(peer.getSnapshot().state, "closed", "local peer close must not wait for provider cleanup");
+  providerScheduler.runAll();
+  await closing;
+  assert.equal(WorkingSignallingClient.latest.handlers.size, 0);
+});
+
+function createTimeoutScheduler() {
+  const tasks = [];
+  return {
+    setTimeout(callback) {
+      tasks.push({ callback, cleared: false });
+      return tasks.length - 1;
+    },
+    clearTimeout(id) { if (tasks[id]) tasks[id].cleared = true; },
+    runAll() {
+      for (const task of tasks) if (!task.cleared) {
+        task.cleared = true;
+        task.callback();
+      }
+    }
+  };
+}

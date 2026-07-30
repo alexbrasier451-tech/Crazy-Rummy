@@ -80,7 +80,13 @@ export function createOnlineLobbySession(options = {}) {
   let presence = { status: "offline", lastHeartbeatAt: null, expiresAt: null, error: null };
   let lastError = null;
   let requestSequence = 0;
+  let mutationSequence = 0;
   let refreshSequence = 0;
+  let appliedMutationSequence = 0;
+  let mutationOrdinal = 0;
+  let renewalOrdinal = 0;
+  const pendingMutationKeys = new Map();
+  const pendingRenewalKeys = new Map();
   let consecutiveFailures = 0;
   let nextPollAt = null;
   let timer = null;
@@ -139,6 +145,13 @@ export function createOnlineLobbySession(options = {}) {
   function applyRoom(result) {
     const table = tableFrom(result);
     const { providerScope: tableScope, ...safeTable } = table ?? {};
+    if (
+      table
+      && roomTable?.tableId === safeTable.tableId
+      && Number.isInteger(roomTable.revision)
+      && Number.isInteger(safeTable.revision)
+      && safeTable.revision < roomTable.revision
+    ) return;
     roomTable = table ? safeTable : null;
     if (result?.invite) invite = result.invite;
     const nextScope = result?.providerScope ?? tableScope;
@@ -170,17 +183,19 @@ export function createOnlineLobbySession(options = {}) {
     }, delay);
   }
   async function ordered(operation, invoke, apply) {
-    const token = ++requestSequence;
+    const token = ++mutationSequence;
+    requestSequence += 1;
     try {
       const result = await invoke();
-      if (disposed || token !== requestSequence) return { stale: true, result };
+      if (disposed || token < appliedMutationSequence) return { stale: true, result };
       apply?.(result);
+      appliedMutationSequence = token;
       lastError = null;
       notify();
       return result;
     } catch (failure) {
       const error = asOnlineLobbyError(failure);
-      if (!disposed && token === requestSequence) {
+      if (!disposed && token === mutationSequence) {
         lastError = error;
         notify();
       }
@@ -191,30 +206,37 @@ export function createOnlineLobbySession(options = {}) {
     assertOnline();
     presence = { ...presence, status: "updating", error: null };
     notify();
-    const token = ++requestSequence;
+    const token = ++refreshSequence;
+    requestSequence += 1;
     try {
       const heartbeat = await service.heartbeat(callInput({ ...player, online: true }));
-      if (disposed || token !== requestSequence) return { stale: true };
+      if (disposed || token !== refreshSequence) return { stale: true };
       presence = { status: "online", lastHeartbeatAt: clockNow(clock), expiresAt: heartbeat?.expiresAt ?? null, error: null };
       if (roomTable?.hostPlayerId === player.playerId) {
+        const renewingTable = roomTable;
+        const [renewalSlot, idempotencyKey] = renewalKeyFor(renewingTable);
         const renewal = await service.renewLease(callInput({
-          tableId: roomTable.tableId,
+          tableId: renewingTable.tableId,
           hostId: player.playerId,
-          expectedRevision: roomTable.revision,
-          expectedTableVersion: roomTable.revision
+          expectedRevision: renewingTable.revision,
+          expectedTableVersion: renewingTable.revision,
+          idempotencyKey
         }));
-        if (disposed || token !== requestSequence) return { stale: true };
+        // A confirmed renewal starts a fresh lease-extension operation. Keep a
+        // key only while its outcome is unknown so a lost reply can replay it.
+        pendingRenewalKeys.delete(renewalSlot);
+        if (disposed || token !== refreshSequence) return { stale: true };
         applyRoom(renewal);
       }
       if (roomTable && typeof service.getTable === "function") {
         const room = await service.getTable(callInput({ tableId: roomTable.tableId, playerId: player.playerId }));
-        if (disposed || token !== requestSequence) return { stale: true };
+        if (disposed || token !== refreshSequence) return { stale: true };
         applyRoom(room);
       }
       if (roomTable && typeof service.getMatchBootstrap === "function") {
         try {
           const started = await service.getMatchBootstrap(callInput({ tableId: roomTable.tableId, playerId: player.playerId }));
-          if (disposed || token !== requestSequence) return { stale: true };
+          if (disposed || token !== refreshSequence) return { stale: true };
           applyRoom(started);
         } catch (failure) {
           // A waiting room has no bootstrap until its host starts. Other
@@ -224,7 +246,7 @@ export function createOnlineLobbySession(options = {}) {
         }
       }
       const response = await service.listTables(callInput());
-      if (disposed || token !== requestSequence) return { stale: true };
+      if (disposed || token !== refreshSequence) return { stale: true };
       const discovered = Array.isArray(response) ? response : response?.tables ?? [];
       tables = discovered.map(publicTable);
       incompatibleOpenTableCount = Number.isInteger(response?.incompatibleOpenTableCount)
@@ -238,7 +260,7 @@ export function createOnlineLobbySession(options = {}) {
       return { tables };
     } catch (failure) {
       const error = asOnlineLobbyError(failure);
-      if (!disposed && token === requestSequence) {
+      if (!disposed && token === refreshSequence) {
         presence = { ...presence, status: "error", error };
         lastError = error;
         consecutiveFailures += 1;
@@ -247,9 +269,33 @@ export function createOnlineLobbySession(options = {}) {
       throw error;
     }
   }
-  function mutate(operation, invoke) {
+  function mutationKeyFor(operation, key) {
+    const stableKey = key ?? operation;
+    if (!pendingMutationKeys.has(stableKey)) {
+      mutationOrdinal += 1;
+      pendingMutationKeys.set(stableKey, `${player.playerId}:${operation}:${mutationOrdinal}`);
+    }
+    return [stableKey, pendingMutationKeys.get(stableKey)];
+  }
+  function renewalKeyFor(table) {
+    // Lease renewal intentionally leaves table.revision unchanged. The slot is
+    // revision-scoped for retries, while the generated key rotates after an
+    // acknowledgement so later renewals extend the lease rather than replay
+    // an earlier expiry from the host idempotency cache.
+    const slot = `${table.tableId}:${table.revision}`;
+    if (!pendingRenewalKeys.has(slot)) {
+      renewalOrdinal += 1;
+      pendingRenewalKeys.set(slot, `${player.playerId}:renewLease:${slot}:${renewalOrdinal}`);
+    }
+    return [slot, pendingRenewalKeys.get(slot)];
+  }
+  function mutate(operation, invoke, key) {
     assertOnline();
-    return ordered(operation, invoke, applyRoom);
+    const [stableKey, idempotencyKey] = mutationKeyFor(operation, key);
+    return ordered(operation, () => invoke(idempotencyKey), applyRoom).then((result) => {
+      if (!result?.stale) pendingMutationKeys.delete(stableKey);
+      return result;
+    });
   }
   const unsubscribeVisibility = visibility.subscribe?.(() => {
     if (disposed) return;
@@ -312,17 +358,18 @@ export function createOnlineLobbySession(options = {}) {
     createTable(input) {
       const visibilityValue = assertVisibility(input?.visibility);
       const capacity = assertCapacity(input?.capacity);
-      return mutate("createTable", () => service.createTable(callInput({ host: player, visibility: visibilityValue, capacity })));
+      return mutate("createTable", (idempotencyKey) => service.createTable(callInput({ host: player, visibility: visibilityValue, capacity, idempotencyKey })), `createTable:${visibilityValue}:${capacity}`);
     },
     joinTable(input) {
       const tableId = assertPlayerId(input?.tableId);
       const expectedRevision = input?.revision;
-      return mutate("joinTable", () => service.joinTable(callInput({
+      return mutate("joinTable", (idempotencyKey) => service.joinTable(callInput({
         tableId,
         player,
         expectedRevision,
-        expectedTableVersion: expectedRevision
-      }))).then((result) => {
+        expectedTableVersion: expectedRevision,
+        idempotencyKey
+      })), `joinTable:${tableId}`).then((result) => {
         if (result?.stale) return result;
         // The join confirmation is an explicit service transition, but the UI
         // receives a completed waiting-room join so its first readiness tap is
@@ -339,77 +386,84 @@ export function createOnlineLobbySession(options = {}) {
     },
     accept() {
       if (!roomTable) return Promise.reject(new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "Join a table before accepting it."));
-      return mutate("acceptTable", () => service.acceptTable(callInput({
+      return mutate("acceptTable", (idempotencyKey) => service.acceptTable(callInput({
         tableId: roomTable.tableId,
         playerId: player.playerId,
         expectedRevision: roomTable.revision,
-        expectedTableVersion: roomTable.revision
-      })));
+        expectedTableVersion: roomTable.revision,
+        idempotencyKey
+      })), `acceptTable:${roomTable.tableId}`);
     },
     setReady(ready) {
       if (!roomTable) return Promise.reject(new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "Join a table before setting ready."));
       const value = ready && typeof ready === "object" && !Array.isArray(ready) ? ready.ready : ready;
       if (typeof value !== "boolean") return Promise.reject(new OnlineLobbyError(ONLINE_ERROR.INVALID_INPUT, "Ready must be true or false."));
-      return mutate("setReady", () => service.setReady(callInput({
+      return mutate("setReady", (idempotencyKey) => service.setReady(callInput({
         tableId: roomTable.tableId,
         playerId: player.playerId,
         ready: value,
         expectedRevision: roomTable.revision,
-        expectedTableVersion: roomTable.revision
-      })));
+        expectedTableVersion: roomTable.revision,
+        idempotencyKey
+      })), `setReady:${roomTable.tableId}:${value}`);
     },
     leave() {
       if (!roomTable) return Promise.resolve({ table: null });
-      return mutate("leaveTable", () => service.leaveTable(callInput({
+      return mutate("leaveTable", (idempotencyKey) => service.leaveTable(callInput({
         tableId: roomTable.tableId,
         playerId: player.playerId,
         expectedRevision: roomTable.revision,
-        expectedTableVersion: roomTable.revision
-      })).then((result) => {
+        expectedTableVersion: roomTable.revision,
+        idempotencyKey
+      })), `leaveTable:${roomTable.tableId}`).then((result) => {
         if (!result.table) { roomTable = null; invite = null; providerScope = null; }
         return result;
-      }));
+      });
     },
     cancelTable() {
       if (!roomTable) return Promise.reject(new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "There is no table to cancel."));
-      return mutate("cancelTable", () => service.cancelTable(callInput({
+      return mutate("cancelTable", (idempotencyKey) => service.cancelTable(callInput({
         tableId: roomTable.tableId,
         hostId: player.playerId,
         expectedRevision: roomTable.revision,
-        expectedTableVersion: roomTable.revision
-      })).then((result) => {
+        expectedTableVersion: roomTable.revision,
+        idempotencyKey
+      })), `cancelTable:${roomTable.tableId}`).then((result) => {
         roomTable = null;
         invite = null;
         providerScope = null;
         return result;
-      }));
+      });
     },
     startMatch() {
       if (!roomTable) return Promise.reject(new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "There is no table to start."));
-      return mutate("startMatch", () => service.startMatch(callInput({
+      return mutate("startMatch", (idempotencyKey) => service.startMatch(callInput({
         tableId: roomTable.tableId,
         hostId: player.playerId,
         expectedRevision: roomTable.revision,
-        expectedTableVersion: roomTable.revision
-      })));
+        expectedTableVersion: roomTable.revision,
+        idempotencyKey
+      })), `startMatch:${roomTable.tableId}`);
     },
     confirmStart() {
       if (!roomTable) return Promise.reject(new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "There is no table to confirm."));
-      return mutate("confirmStart", () => service.confirmStart(callInput({
+      return mutate("confirmStart", (idempotencyKey) => service.confirmStart(callInput({
         tableId: roomTable.tableId,
         hostId: player.playerId,
         expectedRevision: roomTable.revision,
-        expectedTableVersion: roomTable.revision
-      })));
+        expectedTableVersion: roomTable.revision,
+        idempotencyKey
+      })), `confirmStart:${roomTable.tableId}`);
     },
     abortStart() {
       if (!roomTable) return Promise.reject(new OnlineLobbyError(ONLINE_ERROR.NOT_FOUND, "There is no connecting table to restore."));
-      return mutate("abortStart", () => service.abortStart(callInput({
+      return mutate("abortStart", (idempotencyKey) => service.abortStart(callInput({
         tableId: roomTable.tableId,
         hostId: player.playerId,
         expectedRevision: roomTable.revision,
-        expectedTableVersion: roomTable.revision
-      }))).then((result) => {
+        expectedTableVersion: roomTable.revision,
+        idempotencyKey
+      })), `abortStart:${roomTable.tableId}`).then((result) => {
         matchBootstrap = null;
         return result;
       });

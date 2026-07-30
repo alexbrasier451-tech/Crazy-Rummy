@@ -28,6 +28,8 @@ export function createWebRtcPeerConnection({
   scheduler = globalThis,
   heartbeatIntervalMs = 10_000,
   heartbeatTimeoutMs = 30_000,
+  negotiationTimeoutMs = 12_000,
+  sequenceGapTimeoutMs = 12_000,
   iceRestartInitialMs = 1_000,
   iceRestartMaximumMs = 8_000,
   maximumIceRestartAttempts = 5,
@@ -55,6 +57,10 @@ export function createWebRtcPeerConnection({
     || !Number.isFinite(heartbeatTimeoutMs) || heartbeatTimeoutMs <= heartbeatIntervalMs) {
     throw invalid("Heartbeat timing is invalid.");
   }
+  if (!Number.isFinite(negotiationTimeoutMs) || negotiationTimeoutMs < 1
+    || !Number.isFinite(sequenceGapTimeoutMs) || sequenceGapTimeoutMs < 1) {
+    throw invalid("Transport recovery timing is invalid.");
+  }
   if (!Number.isFinite(iceRestartInitialMs) || iceRestartInitialMs < 1
     || !Number.isFinite(iceRestartMaximumMs) || iceRestartMaximumMs < iceRestartInitialMs
     || !Number.isSafeInteger(maximumIceRestartAttempts) || maximumIceRestartAttempts < 1) {
@@ -79,6 +85,9 @@ export function createWebRtcPeerConnection({
   let inboundSequence = 1;
   let lastReceivedAt = null;
   let heartbeatTimer = null;
+  let negotiationTimer = null;
+  let sequenceGapTimer = null;
+  let restartNudgeTimer = null;
   let iceRestartTimer = null;
   let iceRestartAttempts = 0;
   let recoveryActive = false;
@@ -129,7 +138,7 @@ export function createWebRtcPeerConnection({
           pendingSignals.push(envelope);
           return;
         }
-        operationChain = operationChain.then(() => handleSignal(envelope)).catch(fail);
+        operationChain = operationChain.then(() => handleSignal(envelope)).catch(recoverOrFail);
       });
       unsubscribeSignallingState = signalling.subscribe?.((snapshot) => {
         if (closed || snapshot?.state !== PEER_STATE.CONNECTED || !restartNudgePending) return;
@@ -146,8 +155,9 @@ export function createWebRtcPeerConnection({
       connection = rtcPeerConnectionFactory({ iceServers, iceTransportPolicy });
       wireConnection(connection);
       transition(PEER_STATE.CONNECTING);
+      armNegotiationWatchdog();
       for (const envelope of pendingSignals.splice(0)) {
-        operationChain = operationChain.then(() => handleSignal(envelope)).catch(fail);
+        operationChain = operationChain.then(() => handleSignal(envelope)).catch(recoverOrFail);
       }
       if (offerer) {
         wireChannel(connection.createDataChannel(channelLabel, { ordered: true }));
@@ -170,7 +180,7 @@ export function createWebRtcPeerConnection({
     addListener(peerConnection, "icecandidate", ({ candidate } = {}) => {
       if (!candidate) return;
       const value = typeof candidate.toJSON === "function" ? candidate.toJSON() : candidate;
-      sendSignal(SIGNAL_KIND.ICE_CANDIDATE, { candidate: copyJson(value) }).catch(fail);
+      sendSignal(SIGNAL_KIND.ICE_CANDIDATE, { candidate: copyJson(value) }).catch(recoverOrFail);
     });
     addListener(peerConnection, "datachannel", ({ channel: remoteChannel } = {}) => wireChannel(remoteChannel));
     addListener(peerConnection, "connectionstatechange", () => {
@@ -179,7 +189,10 @@ export function createWebRtcPeerConnection({
         clearIceRestart();
         if (receivedHello && receivedHelloAck) transition(PEER_STATE.CONNECTED);
         else if (channel?.readyState === "open") beginHandshake();
-        else transition(PEER_STATE.CONNECTING);
+        else {
+          transition(PEER_STATE.CONNECTING);
+          armNegotiationWatchdog();
+        }
       } else if (peerConnection.connectionState === "disconnected") {
         beginRecovery(new PeerTransportError(
           "WEBRTC_DISCONNECTED",
@@ -245,7 +258,7 @@ export function createWebRtcPeerConnection({
       engineRulesVersion,
       playerId: localPlayerId,
       seatProof: localSeatProof,
-    }).catch(fail);
+    }).catch(recoverOrFail);
   }
 
   function resetNegotiation() {
@@ -258,6 +271,7 @@ export function createWebRtcPeerConnection({
     lastReceivedAt = null;
     queuedCandidates.splice(0);
     pendingMessages.clear();
+    clearSequenceGapWatchdog();
   }
 
   async function createAndSendOffer({ iceRestart }) {
@@ -284,6 +298,64 @@ export function createWebRtcPeerConnection({
     recoveryActive = false;
   }
 
+  function clearNegotiationWatchdog() {
+    if (negotiationTimer !== null) scheduler.clearTimeout?.(negotiationTimer);
+    negotiationTimer = null;
+  }
+
+  function armNegotiationWatchdog() {
+    if (closed || recoveryActive || negotiationTimer !== null || state === PEER_STATE.CONNECTED
+      || (state === PEER_STATE.FAILED && error?.retryable !== true)) return;
+    negotiationTimer = scheduler.setTimeout?.(() => {
+      negotiationTimer = null;
+      if (closed || state === PEER_STATE.CONNECTED
+        || (state === PEER_STATE.FAILED && error?.retryable !== true)) return;
+      const cause = new PeerTransportError(
+        "NEGOTIATION_TIMEOUT",
+        "The peer negotiation did not complete in time.",
+        { retryable: true },
+      );
+      if (offerer) beginRecovery(cause, { force: true });
+      else {
+        transition(PEER_STATE.DISCONNECTED, cause);
+        operationChain = operationChain.then(() => requestRemoteRestart("negotiation-timeout")).catch(() => {});
+      }
+      armNegotiationWatchdog();
+    }, negotiationTimeoutMs) ?? null;
+  }
+
+  function clearSequenceGapWatchdog() {
+    if (sequenceGapTimer !== null) scheduler.clearTimeout?.(sequenceGapTimer);
+    sequenceGapTimer = null;
+  }
+
+  function armSequenceGapWatchdog() {
+    if (closed || sequenceGapTimer !== null || pendingMessages.size === 0) return;
+    sequenceGapTimer = scheduler.setTimeout?.(() => {
+      sequenceGapTimer = null;
+      if (closed || pendingMessages.size === 0) return;
+      beginRecovery(new PeerTransportError(
+        "WIRE_SEQUENCE_STALLED",
+        "A peer transport event sequence did not recover in time.",
+        { retryable: true },
+      ), { force: true });
+    }, sequenceGapTimeoutMs) ?? null;
+  }
+
+  function clearRestartNudgeRetry() {
+    if (restartNudgeTimer !== null) scheduler.clearTimeout?.(restartNudgeTimer);
+    restartNudgeTimer = null;
+  }
+
+  function scheduleRestartNudgeRetry(reason) {
+    if (closed || offerer || !restartNudgePending || restartNudgeTimer !== null) return;
+    restartNudgeTimer = scheduler.setTimeout?.(() => {
+      restartNudgeTimer = null;
+      if (closed || !restartNudgePending) return;
+      operationChain = operationChain.then(() => requestRemoteRestart(reason)).catch(() => {});
+    }, iceRestartInitialMs) ?? null;
+  }
+
   function scheduleIceRestart(delay = 0) {
     if (closed || !offerer || !recoveryActive || iceRestartTimer !== null) return;
     const run = () => {
@@ -306,6 +378,7 @@ export function createWebRtcPeerConnection({
     }
     iceRestartAttempts += 1;
     transition(PEER_STATE.CONNECTING);
+    armNegotiationWatchdog();
     await createAndSendOffer({ iceRestart: true });
     if (!closed && state !== PEER_STATE.CONNECTED && recoveryActive) {
       const delay = Math.min(
@@ -337,9 +410,14 @@ export function createWebRtcPeerConnection({
   function beginRecovery(cause, { force = false } = {}) {
     if (closed || (state === PEER_STATE.FAILED && (!force || error?.retryable !== true))) return;
     transition(PEER_STATE.DISCONNECTED, cause);
-    if (!offerer) return;
+    if (!offerer) {
+      armNegotiationWatchdog();
+      operationChain = operationChain.then(() => requestRemoteRestart("peer-recovery")).catch(() => {});
+      return;
+    }
     if (recoveryActive && !force) return;
     if (force) clearIceRestart();
+    clearNegotiationWatchdog();
     recoveryActive = true;
     scheduleIceRestart();
   }
@@ -350,6 +428,7 @@ export function createWebRtcPeerConnection({
     try {
       await sendSignal(SIGNAL_KIND.RESTART, { reason });
       restartNudgePending = false;
+      clearRestartNudgeRetry();
     } catch (cause) {
       if (!closed) {
         transition(PEER_STATE.DISCONNECTED, new PeerTransportError(
@@ -357,6 +436,7 @@ export function createWebRtcPeerConnection({
           "Connection recovery is waiting for signalling.",
           { retryable: true, cause },
         ));
+        scheduleRestartNudgeRetry(reason);
       }
     }
   }
@@ -374,6 +454,7 @@ export function createWebRtcPeerConnection({
       transition(PEER_STATE.DISCONNECTED, cause);
       await requestRemoteRestart("browser-resumed");
     }
+    armNegotiationWatchdog();
     return getSnapshot();
   }
 
@@ -404,6 +485,7 @@ export function createWebRtcPeerConnection({
       if (offerer) throw new PeerTransportError("UNEXPECTED_SIGNAL", "The offerer received an unexpected offer.");
       resetNegotiation();
       transition(PEER_STATE.CONNECTING);
+      armNegotiationWatchdog();
       await connection.setRemoteDescription(envelope.payload?.description);
       remoteDescriptionSet = true;
       await flushCandidates();
@@ -512,7 +594,7 @@ export function createWebRtcPeerConnection({
         markReceived();
         receivedHello = true;
         return sendWire("hello-ack", { playerId: localPlayerId });
-      }).then(maybeConnected).catch(fail);
+      }).then(maybeConnected).catch(recoverOrFail);
       return;
     }
     if (message.kind === "hello-ack") {
@@ -531,7 +613,7 @@ export function createWebRtcPeerConnection({
         return;
       }
       markReceived();
-      sendWire("pong", { nonce: message.payload?.nonce }).catch(fail);
+      sendWire("pong", { nonce: message.payload?.nonce }).catch(recoverOrFail);
       return;
     }
     if (message.kind === "pong") {
@@ -566,12 +648,14 @@ export function createWebRtcPeerConnection({
     }
     markReceived();
     pendingMessages.set(message.sequence, message.payload);
+    armSequenceGapWatchdog();
     while (pendingMessages.has(inboundSequence)) {
       const payload = pendingMessages.get(inboundSequence);
       pendingMessages.delete(inboundSequence);
       inboundSequence += 1;
       for (const listener of [...messageListeners]) listener(copyJson(payload));
     }
+    if (pendingMessages.size === 0) clearSequenceGapWatchdog();
   }
 
   function markReceived() {
@@ -584,6 +668,8 @@ export function createWebRtcPeerConnection({
   function maybeConnected() {
     if (!receivedHello || !receivedHelloAck || closed) return;
     clearIceRestart();
+    clearNegotiationWatchdog();
+    clearRestartNudgeRetry();
     transition(PEER_STATE.CONNECTED);
     lastReceivedAt = clock();
     if (heartbeatTimer === null) {
@@ -597,18 +683,33 @@ export function createWebRtcPeerConnection({
           ));
           return;
         }
-        sendWire("ping", { nonce: `${clock()}` }).catch(fail);
+        sendWire("ping", { nonce: `${clock()}` }).catch(recoverOrFail);
       }, heartbeatIntervalMs);
     }
   }
 
   async function send(payload) {
-    if (state !== PEER_STATE.CONNECTED || channel?.readyState !== "open") {
+    if (state !== PEER_STATE.CONNECTED) {
       throw new PeerTransportError("PEER_NOT_CONNECTED", "The peer data channel is not connected.", { retryable: true });
     }
-    outboundSequence += 1;
-    await sendWire("event", copyJson(payload), outboundSequence);
-    return outboundSequence;
+    if (channel?.readyState !== "open") {
+      const cause = new PeerTransportError(
+        "DATA_CHANNEL_NOT_OPEN",
+        "The peer data channel closed while a message was being sent.",
+        { retryable: true },
+      );
+      beginRecovery(cause, { force: true });
+      throw cause;
+    }
+    const sequence = outboundSequence + 1;
+    try {
+      await sendWire("event", copyJson(payload), sequence);
+      outboundSequence = sequence;
+      return sequence;
+    } catch (cause) {
+      recoverOrFail(asSendFailure(cause));
+      throw cause;
+    }
   }
 
   async function sendWire(kind, payload, sequence = undefined) {
@@ -634,18 +735,44 @@ export function createWebRtcPeerConnection({
       ? cause
       : new PeerTransportError("PEER_CONNECTION_FAILED", "Peer connection setup failed.", { retryable: true, cause });
     pendingMessages.clear();
+    clearSequenceGapWatchdog();
     clearIceRestart();
     transition(PEER_STATE.FAILED, error);
+    if (error.retryable) armNegotiationWatchdog();
+  }
+
+  function asSendFailure(cause) {
+    if (cause instanceof PeerTransportError) return cause;
+    return new PeerTransportError(
+      "DATA_CHANNEL_SEND_FAILED",
+      "The peer data channel could not send a message.",
+      { retryable: true, cause },
+    );
+  }
+
+  function recoverOrFail(cause) {
+    const error = asSendFailure(cause);
+    if (error.retryable) {
+      beginRecovery(error, { force: true });
+      return;
+    }
+    fail(error);
   }
 
   async function close({ notifyRemote = true } = {}) {
     if (closed) return;
     if (notifyRemote) {
-      if (channel?.readyState === "open") await sendWire("close", { reason: "normal" }).catch(() => {});
-      await sendSignal(SIGNAL_KIND.CLOSE, { reason: "normal" }).catch(() => {});
+      // Closing local gameplay resources must never wait on a provider call.
+      // The close notification is best effort; peer/session recovery remains
+      // authoritative if it cannot leave the browser.
+      if (channel?.readyState === "open") void sendWire("close", { reason: "normal" }).catch(() => {});
+      void sendSignal(SIGNAL_KIND.CLOSE, { reason: "normal" }).catch(() => {});
     }
     closed = true;
     clearIceRestart();
+    clearNegotiationWatchdog();
+    clearSequenceGapWatchdog();
+    clearRestartNudgeRetry();
     if (heartbeatTimer !== null) scheduler.clearInterval(heartbeatTimer);
     unsubscribeSignals?.();
     unsubscribeSignallingState?.();

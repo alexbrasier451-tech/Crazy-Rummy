@@ -112,11 +112,20 @@ export function createConfiguredPeerConnection({
   credentialProvider,
   clock,
   scheduler,
+  providerScheduler = globalThis,
+  providerOperationTimeoutMs = 8_000,
+  providerCloseTimeoutMs = 3_000,
   heartbeatIntervalMs,
   heartbeatTimeoutMs,
   iceTransportPolicy
 } = {}) {
   if (!enabled || !publicKey) return null;
+  if (!providerScheduler || typeof providerScheduler.setTimeout !== "function"
+    || typeof providerScheduler.clearTimeout !== "function"
+    || !Number.isFinite(providerOperationTimeoutMs) || providerOperationTimeoutMs < 1
+    || !Number.isFinite(providerCloseTimeoutMs) || providerCloseTimeoutMs < 1) {
+    throw new TypeError("Configured provider cleanup timing is invalid.");
+  }
 
   const client = new SignallingClientClass({ apiKey: publicKey });
   const signalling = createManagedSignallingAdapter({
@@ -125,7 +134,9 @@ export function createConfiguredPeerConnection({
     localPlayerId,
     remotePlayerId,
     credentialProvider,
-    clock
+    clock,
+    scheduler: providerScheduler,
+    operationTimeoutMs: providerOperationTimeoutMs,
   });
   const peer = createWebRtcPeerConnection({
     matchId,
@@ -152,14 +163,32 @@ export function createConfiguredPeerConnection({
     if (providerClosePromise) return providerClosePromise;
     providerClosePromise = (async () => {
       unsubscribePeerState();
-      const outcomes = await Promise.allSettled([
+      const cleanup = Promise.allSettled([
         signalling.close(),
-        Promise.resolve().then(() => client.close?.())
+        withProviderDeadline(() => client.close?.(), "close")
       ]);
-      const failure = outcomes.find((outcome) => outcome.status === "rejected");
-      if (failure) throw failure.reason;
+      await withProviderDeadline(() => cleanup, "cleanup").catch(() => {});
     })();
     return providerClosePromise;
+  }
+
+  function withProviderDeadline(operation, name) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = providerScheduler.setTimeout(() => finish(reject, new Error(
+        `Configured signalling provider ${name} did not settle in time.`,
+      )), providerCloseTimeoutMs);
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        providerScheduler.clearTimeout(timer);
+        callback(value);
+      };
+      Promise.resolve().then(operation).then(
+        (value) => finish(resolve, value),
+        (cause) => finish(reject, cause),
+      );
+    });
   }
 
   unsubscribePeerState = peer.subscribe((snapshot) => {

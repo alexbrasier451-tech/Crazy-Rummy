@@ -109,6 +109,7 @@ export function createMeteredLobbyProvider({
     }
     validateOperation(operation, payload);
     applyRateLimit(operation, lastRequestAt, resolvedConfig.rateLimitMs, clock);
+    const { idempotencyKey: suppliedIdempotencyKey, ...requestPayload } = payload;
     const requestId = createRequestId();
     const mutating = !["heartbeat", "listTables", "lookupTable"].includes(operation);
     const envelope = {
@@ -119,11 +120,13 @@ export function createMeteredLobbyProvider({
       requestId,
       channel: scope,
       capabilities: METERED_CAPABILITIES,
-      payload: withLease(operation, payload, resolvedConfig.leaseTtlMs),
+      payload: withLease(operation, requestPayload, resolvedConfig.leaseTtlMs),
       ...(mutating ? {
         mutation: {
-          idempotencyKey: requestId,
-          expectedTableVersion: payload.expectedTableVersion ?? payload.expectedRevision ?? null,
+          idempotencyKey: typeof suppliedIdempotencyKey === "string" && suppliedIdempotencyKey.length
+            ? suppliedIdempotencyKey
+            : requestId,
+          expectedTableVersion: requestPayload.expectedTableVersion ?? requestPayload.expectedRevision ?? null,
         },
       } : {}),
     };
@@ -226,13 +229,21 @@ export function createMeteredRealtimeRequestClient({
   if (!Number.isInteger(maxRequestBytes) || maxRequestBytes < 512 || maxRequestBytes > 32_768) throw invalidConfig("maxRequestBytes is invalid.");
   const client = new SignallingClient({ apiKey: publicKey });
   const subscribed = new Set();
+  const subscriptionPromises = new Map();
   const pending = new Map();
+  const authorityByChannel = new Map();
   let connectPromise = null;
   let closed = false;
   const onMessage = (event) => { void receive(event.data, event.channel, event.from); };
   const onDirect = (event) => { void receive(event.data, event.data?.channel, event.from); };
+  const onDisconnected = () => {
+    subscribed.clear();
+    subscriptionPromises.clear();
+    connectPromise = null;
+  };
   client.on("message", onMessage);
   client.on("direct", onDirect);
+  client.on("disconnected", onDisconnected);
 
   async function ensureConnected() {
     if (closed) throw new MeteredProviderError("METERED_OFFLINE", "Metered client is closed.", { retryable: true });
@@ -250,73 +261,115 @@ export function createMeteredRealtimeRequestClient({
 
   async function ensureSubscribed(channel) {
     if (closed) throw new MeteredProviderError("METERED_OFFLINE", "Metered client is closed.", { retryable: true });
-    if (!subscribed.has(channel)) {
-      await ensureConnected();
-      await client.subscribe(channel, { includeSenderMetadata: false });
-      subscribed.add(channel);
+    if (subscribed.has(channel)) return;
+    if (!subscriptionPromises.has(channel)) {
+      subscriptionPromises.set(channel, (async () => {
+        await ensureConnected();
+        await client.subscribe(channel, { includeSenderMetadata: false });
+        subscribed.add(channel);
+      })().finally(() => subscriptionPromises.delete(channel)));
     }
+    await subscriptionPromises.get(channel);
   }
 
   async function request(envelope, { timeoutMs = requestTimeoutMs } = {}) {
     if (closed) throw new MeteredProviderError("METERED_OFFLINE", "Metered client is closed.", { retryable: true });
     if (!envelope?.requestId || !validChannel(envelope.channel)) throw invalidRequest("A requestId and safe channel are required.");
-    await ensureSubscribed(envelope.channel);
-    // A table creator is its own authority. Process its create/renew requests
-    // locally rather than waiting for Metered to echo a publish back to sender.
-    if (hostHandler && shouldHandleLocally(envelope)) {
-      const value = await hostHandler(envelope, { fromPeerId: null, installationId });
-      await subscribeResultScope(value);
-      return { ok: true, value };
-    }
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let discoveryTimer = null;
       const timer = setTimeout(() => {
-        pending.delete(envelope.requestId);
-        reject(new MeteredProviderError("METERED_OFFLINE", "Metered response timed out.", { retryable: true }));
+        settle(new MeteredProviderError("METERED_OFFLINE", "Metered response timed out.", { retryable: true }));
       }, timeoutMs);
-      pending.set(envelope.requestId, {
-        resolve(value) { clearTimeout(timer); resolve(value); },
-        reject(error) { clearTimeout(timer); reject(error); },
-        tables: [],
-        discovery: envelope.operation === "listTables",
-        discoveryVersions: envelope.operation === "listTables"
-          ? { protocolVersion: envelope.payload?.protocolVersion, rulesVersion: envelope.payload?.rulesVersion }
-          : null,
-        incompatibleOpenTableCountByResponder: new Map(),
-        incompatibleAdvertisementIdsByResponder: new Map(),
-      });
-      try {
-        await client.publish(envelope.channel, {
-          type: envelope.operation === "listTables" ? "crazy-rummy/discovery-request" : "crazy-rummy/lobby-request",
-          installationId,
-          envelope,
-        });
-        if (envelope.operation === "listTables") {
-          setTimeout(() => {
-            const pendingRequest = pending.get(envelope.requestId);
-            if (!pendingRequest) return;
-            pending.delete(envelope.requestId);
-            pendingRequest.resolve({ ok: true, value: {
-              tables: dedupeTables(pendingRequest.tables),
-              incompatibleOpenTableCount: incompatibleDiscoveryCount(pendingRequest)
-            } });
-          }, discoveryWindowMs);
-        }
-      } catch (error) {
-        pending.delete(envelope.requestId);
+      const settle = (error, value) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
-        reject(error);
-      }
+        if (discoveryTimer !== null) clearTimeout(discoveryTimer);
+        pending.delete(envelope.requestId);
+        if (error) reject(error);
+        else resolve(value);
+      };
+      void (async () => {
+        try {
+          await ensureSubscribed(envelope.channel);
+          if (settled) return;
+          // A table creator is its own authority. Process its create/renew
+          // requests locally rather than waiting for a provider echo.
+          if (hostHandler && shouldHandleLocally(envelope)) {
+            const value = await hostHandler(envelope, { fromPeerId: null, installationId });
+            await subscribeResultScope(value);
+            settle(null, { ok: true, value });
+            return;
+          }
+          const pendingRequest = {
+            channel: envelope.channel,
+            resolve(value) { settle(null, value); },
+            reject(error) { settle(error); },
+            tables: [],
+            discovery: envelope.operation === "listTables",
+            discoveryVersions: envelope.operation === "listTables"
+              ? { protocolVersion: envelope.payload?.protocolVersion, rulesVersion: envelope.payload?.rulesVersion }
+              : null,
+            incompatibleOpenTableCountByResponder: new Map(),
+            incompatibleAdvertisementIdsByResponder: new Map(),
+          };
+          pending.set(envelope.requestId, pendingRequest);
+          await client.publish(envelope.channel, {
+            type: envelope.operation === "listTables" ? "crazy-rummy/discovery-request" : "crazy-rummy/lobby-request",
+            installationId,
+            envelope,
+          });
+          if (envelope.operation === "listTables") {
+            discoveryTimer = setTimeout(() => {
+              if (!pending.has(envelope.requestId)) return;
+              pendingRequest.resolve({ ok: true, value: {
+                tables: dedupeTables(pendingRequest.tables),
+                incompatibleOpenTableCount: incompatibleDiscoveryCount(pendingRequest)
+              } });
+            }, discoveryWindowMs);
+            if (settled) {
+              clearTimeout(discoveryTimer);
+              discoveryTimer = null;
+            }
+          }
+        } catch (error) {
+          settle(error);
+        }
+      })();
     });
   }
 
   async function advertiseTable(table, { channel = DEFAULT_CONFIG.openIndexChannel, expiresAt } = {}) {
     if (!table?.tableId || table.visibility !== "OPEN") throw invalidRequest("Only an OPEN table may be advertised publicly.");
-    await ensureSubscribed(channel);
-    await client.publish(channel, {
-      type: "crazy-rummy/table-advertisement",
-      table: publicTable(table),
-      expiresAt,
-      installationId,
+    return withDeadline(async () => {
+      await ensureSubscribed(channel);
+      await client.publish(channel, {
+        type: "crazy-rummy/table-advertisement",
+        table: publicTable(table),
+        expiresAt,
+        installationId,
+      });
+    }, requestTimeoutMs, "Metered advertisement timed out.");
+  }
+
+  function withDeadline(work, timeoutMs, timeoutMessage) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => settle(new MeteredProviderError(
+        "METERED_OFFLINE", timeoutMessage, { retryable: true }
+      )), timeoutMs);
+      const settle = (error, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(value);
+      };
+      void Promise.resolve().then(work).then(
+        (value) => settle(null, value),
+        (error) => settle(error)
+      );
     });
   }
 
@@ -325,11 +378,15 @@ export function createMeteredRealtimeRequestClient({
     if (message.type === "crazy-rummy/lobby-response") {
       const pendingRequest = pending.get(message.requestId);
       if (!pendingRequest || message.toInstallationId !== installationId) return;
+      if (message.channel !== pendingRequest.channel) return;
+      const expectedAuthority = authorityByChannel.get(message.channel);
+      if (expectedAuthority && expectedAuthority !== message.installationId) return;
       if (pendingRequest.discovery) {
         collectDiscovery(pendingRequest, message.value, message.installationId);
+        rememberAuthority(message.value, message.installationId, authorityByChannel);
         return;
       }
-      pending.delete(message.requestId);
+      if (!message.error) rememberAuthority(message.value, message.installationId, authorityByChannel);
       message.error ? pendingRequest.reject(message.error) : pendingRequest.resolve({ ok: true, value: message.value });
       return;
     }
@@ -356,6 +413,7 @@ export function createMeteredRealtimeRequestClient({
         channel: envelope.channel,
         value,
       };
+      await ensureConnected();
       if (fromPeerId && typeof client.send === "function") await client.send(fromPeerId, response);
       else await client.publish(envelope.channel, response);
     } catch (error) {
@@ -367,12 +425,14 @@ export function createMeteredRealtimeRequestClient({
         channel: envelope.channel,
         error: serializeProviderError(error),
       };
+      await ensureConnected();
       if (fromPeerId && typeof client.send === "function") await client.send(fromPeerId, response);
       else await client.publish(envelope.channel, response);
     }
   }
 
-  async function subscribeResultScope(value) {
+  async function subscribeResultScope(value, authorityInstallationId = installationId) {
+    rememberAuthority(value, authorityInstallationId, authorityByChannel);
     if (validChannel(value?.table?.providerScope)) await ensureSubscribed(value.table.providerScope);
   }
 
@@ -385,8 +445,11 @@ export function createMeteredRealtimeRequestClient({
       closed = true;
       client.off?.("message", onMessage);
       client.off?.("direct", onDirect);
+      client.off?.("disconnected", onDisconnected);
       await Promise.all([...subscribed].map((channel) => client.unsubscribe(channel)));
       subscribed.clear();
+      subscriptionPromises.clear();
+      authorityByChannel.clear();
       for (const entry of pending.values()) entry.reject(new MeteredProviderError("METERED_OFFLINE", "Metered client closed.", { retryable: true }));
       pending.clear();
       await client.close?.();
@@ -486,6 +549,14 @@ function rememberScopes(value, scopes) {
   const records = Array.isArray(value?.tables) ? value.tables : [value?.table, value];
   for (const record of records) {
     if (record?.tableId && validChannel(record.providerScope)) scopes.set(record.tableId, record.providerScope);
+  }
+}
+
+function rememberAuthority(value, installationId, authorities) {
+  if (!(authorities instanceof Map) || typeof installationId !== "string" || !installationId) return;
+  const records = Array.isArray(value?.tables) ? value.tables : [value?.table, value];
+  for (const record of records) {
+    if (validChannel(record?.providerScope)) authorities.set(record.providerScope, installationId);
   }
 }
 
