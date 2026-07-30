@@ -137,6 +137,110 @@ try {
   await page.evaluate(() => globalThis.gameFlowHarness.passTurnToBlake());
   assert.equal(await drawnCard.getAttribute("data-recently-drawn"), "false",
     "the just-drawn highlight should clear when the player's turn ends");
+
+  const ambiguousPage = await browser.newPage({
+    viewport: { width: 390, height: 844 }
+  });
+  await ambiguousPage.goto(
+    `${server.origin}/tests/browser/game-flow.html`,
+    { waitUntil: "domcontentloaded" }
+  );
+  for (const cardId of ["clubs:4", "diamonds:4", "clubs:J"]) {
+    await ambiguousPage.locator(
+      `[data-private-hand] [data-card-id="${cardId}"]`
+    ).click();
+  }
+  await ambiguousPage.locator('[data-game-control="open-actions"]').click();
+  await ambiguousPage.locator('[data-game-control="open-meld"]').click();
+  await ambiguousPage.getByRole("radio", { name: "Set" }).waitFor();
+  assert.equal(
+    await ambiguousPage.getByRole("radio", { name: "Run" }).count(),
+    1,
+    "cards that can be either a set or run must let the player declare the meld type"
+  );
+  await ambiguousPage.getByRole("radio", { name: "Set" }).click();
+  await ambiguousPage.getByText("Set detected").waitFor();
+  assert.equal(
+    await ambiguousPage.locator('[data-game-control="place-meld"]').isEnabled(),
+    true,
+    "choosing the set interpretation must make two wilds plus one natural placeable"
+  );
+  await ambiguousPage.locator('[data-game-control="place-meld"]').click();
+  const ambiguousAction = await ambiguousPage.evaluate(
+    () => globalThis.gameFlowHarness.pendingAction()
+  );
+  assert.equal(ambiguousAction?.type, "CREATE_MELD");
+  assert.equal(ambiguousAction?.payload?.meld?.type, "SET");
+  assert.deepEqual(
+    ambiguousAction?.payload?.meld?.slots
+      .filter(({ cardId }) => ["clubs:4", "diamonds:4"].includes(cardId))
+      .map(({ represented }) => represented),
+    [{ rank: "J" }, { rank: "J" }],
+    "both wild cards must be submitted with the declared set rank"
+  );
+  assert.equal(
+    await ambiguousPage.evaluate(() => globalThis.gameFlowHarness.projectPendingAction()),
+    true,
+    "the declared meld must pass authoritative engine validation"
+  );
+  assert.equal(
+    await ambiguousPage.evaluate(() => globalThis.gameFlowHarness.acceptPendingAction()),
+    true
+  );
+  await ambiguousPage.locator(
+    '[data-private-hand] [data-card-id="clubs:J"]'
+  ).waitFor({ state: "detached" });
+  assert.match(
+    await ambiguousPage.getByLabel("Shared table melds").innerText(),
+    /4\s*♣.*4\s*♦.*J\s*♣/s,
+    "the accepted three-card meld must reach the shared table"
+  );
+
+  await ambiguousPage.reload({ waitUntil: "domcontentloaded" });
+  for (const cardId of ["clubs:4", "diamonds:4", "clubs:J"]) {
+    await ambiguousPage.locator(
+      `[data-private-hand] [data-card-id="${cardId}"]`
+    ).click();
+  }
+  await ambiguousPage.locator('[data-game-control="open-actions"]').click();
+  await ambiguousPage.locator('[data-game-control="open-meld"]').click();
+  await ambiguousPage.getByRole("radio", { name: "Run" }).click();
+  const firstWildRank = ambiguousPage.getByLabel(
+    "Wild completes run as rank for 4 of clubs"
+  );
+  assert.deepEqual(
+    await firstWildRank.locator("option").evaluateAll((options) => (
+      options.map(({ value }) => value).filter(Boolean)
+    )),
+    ["9", "10", "Q", "K"],
+    "the declared run must offer only positions from its run interpretations"
+  );
+  await firstWildRank.selectOption("9");
+  assert.equal(
+    await ambiguousPage.locator('[data-game-control="place-meld"]').isEnabled(),
+    true,
+    "one explicit wild choice must resolve the remaining forced run position"
+  );
+  await ambiguousPage.locator('[data-game-control="place-meld"]').click();
+  const runAction = await ambiguousPage.evaluate(
+    () => globalThis.gameFlowHarness.pendingAction()
+  );
+  assert.equal(runAction?.payload?.meld?.type, "RUN");
+  assert.deepEqual(
+    runAction?.payload?.meld?.slots.map(({ represented }) => represented.rank),
+    ["9", "10", "J"],
+    "the two wilds must occupy distinct positions in the declared run"
+  );
+  assert.equal(
+    await ambiguousPage.evaluate(() => globalThis.gameFlowHarness.projectPendingAction()),
+    true,
+    "the alternate run declaration must also pass authoritative engine validation"
+  );
+  assert.equal(
+    await ambiguousPage.evaluate(() => globalThis.gameFlowHarness.acceptPendingAction()),
+    true
+  );
+  await ambiguousPage.close();
 } finally {
   await browser.close();
   await server.close();

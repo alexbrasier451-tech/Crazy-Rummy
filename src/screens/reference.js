@@ -15,7 +15,6 @@ import {
   copy,
   element,
   field,
-  illustrativeNotice,
   panel,
   routeLink,
   screenShell
@@ -61,6 +60,41 @@ export function rulesReference(activeRules = DEFAULT_RULES) {
 export function rulesScreen({ localSession, onlineGameSession, gameSession } = {}) {
   const reference = rulesReference(activeRulesFrom(onlineGameSession, gameSession, localSession));
   const sections = reference.sections;
+  const schedule = element(
+    "ol",
+    { className: "rules-timetable", "aria-label": "Moving wild schedule" },
+    reference.schedule.map(({ index, wildRank, label }) => element(
+      "li",
+      { className: "rules-timetable__stop" },
+      element("span", {
+        className: "rules-timetable__number",
+        text: String(index).padStart(2, "0"),
+        "aria-hidden": "true"
+      }),
+      element("strong", { text: label }),
+      element("span", { text: `${wildRank}s wild` })
+    ))
+  );
+  const schedulePanel = panel(
+    "Moving wild schedule",
+    copy("The hand number fixes the moving wild rank."),
+    schedule
+  );
+  schedulePanel.classList.add("rules-schedule-ticket");
+  const ruleSections = sections.map(([title, description], index) => {
+    const headingId = `rules-${index + 1}`;
+    return element(
+      "section",
+      { className: "screen-panel rules-entry", "aria-labelledby": headingId },
+      element("span", {
+        className: "rules-entry__station",
+        text: String(index + 1).padStart(2, "0"),
+        "aria-hidden": "true"
+      }),
+      element("h2", { id: headingId, tabIndex: -1, text: title }),
+      copy(description)
+    );
+  });
 
   return screenShell({
     id: "rules",
@@ -68,14 +102,13 @@ export function rulesScreen({ localSession, onlineGameSession, gameSession } = {
     title: "Crazy Rummy rules",
     action: routeLink("Lobby", "/lobby", "quiet"),
     content: [
-      illustrativeNotice(
-        `Cached contract reference · active table preset ${reference.version}. Examples explain the rules but never replace the recorded preset.`
+      element(
+        "aside",
+        { className: "rules-preset-ticket", role: "note" },
+        element("strong", { text: "Immutable table preset" }),
+        copy(`Cached reference · ${reference.version}. This page explains the recorded preset; it does not change a running table.`)
       ),
-      panel(
-        "Moving wild schedule",
-        copy("The hand number fixes the moving wild rank."),
-        bulletList(reference.schedule.map(({ index, wildRank, label }) => `Hand ${index}: ${label} (${wildRank}s wild).`), { ordered: true })
-      ),
+      schedulePanel,
       element(
         "nav",
         { className: "section-nav", "aria-label": "Rules sections" },
@@ -84,15 +117,15 @@ export function rulesScreen({ localSession, onlineGameSession, gameSession } = {
             type: "button",
             className: "text-link",
             text: title,
-            onClick: () => document.querySelector(`#rules-${index + 1}`)?.scrollIntoView()
+            onClick: () => {
+              const destination = document.querySelector(`#rules-${index + 1}`);
+              destination?.scrollIntoView();
+              destination?.focus({ preventScroll: true });
+            }
           }))
         )
       ),
-      ...sections.map(([title, description], index) => panel(
-        title,
-        element("span", { id: `rules-${index + 1}`, className: "anchor-target" }),
-        copy(description)
-      ))
+      element("div", { className: "rules-handbook" }, ruleSections)
     ]
   });
 }
@@ -244,6 +277,12 @@ export function settingsScreen({
     "aria-live": "polite"
   });
   const marker = markerField(preferences.marker ?? "●");
+  const settingsGroup = (title, className, ...content) => element(
+    "section",
+    { className: `settings-ticket ${className}` },
+    element("h2", { text: title }),
+    ...content
+  );
   const form = element(
     "form",
     {
@@ -261,20 +300,31 @@ export function settingsScreen({
         saved.textContent = "Settings saved on this device.";
       }
     },
-    name.wrapper,
-    marker,
-    selectField("card-size", "Card size", ["Standard", "Large"], preferences.cardSize),
-    selectField("hand-sort", "Default hand sorting", ["Rank", "Suit"], preferences.handSort),
-    selectField("motion", "Motion", ["System", "Reduced"], preferences.motion),
-    selectField("confirm-discard", "Confirm discard", ["Always", "Quick confirm"], preferences.confirmDiscard),
-    checkboxField("high-contrast", "High contrast and suit labels", preferences.highContrast),
-    checkboxField("auto-refresh", "Lobby auto-refresh", preferences.autoRefresh ?? true),
-    checkboxField("haptics", "Haptics", hapticsAvailable && preferences.haptics, {
-      disabled: !hapticsAvailable,
-      hint: hapticsAvailable ? "Uses short optional feedback only." : "Haptics are not available in this browser."
-    }),
-    actionButton({ label: "Save settings", type: "submit" }),
-    saved
+    settingsGroup("Your seat", "settings-ticket--seat", name.wrapper, marker),
+    settingsGroup(
+      "Play comfort",
+      "settings-ticket--comfort",
+      selectField("card-size", "Card size", ["Standard", "Large"], preferences.cardSize),
+      selectField("hand-sort", "Default hand sorting", ["Rank", "Suit"], preferences.handSort),
+      selectField("motion", "Motion", ["System", "Reduced"], preferences.motion),
+      selectField("confirm-discard", "Confirm discard", ["Always", "Quick confirm"], preferences.confirmDiscard),
+      checkboxField("high-contrast", "High contrast and suit labels", preferences.highContrast),
+      checkboxField("haptics", "Haptics", hapticsAvailable && preferences.haptics, {
+        disabled: !hapticsAvailable,
+        hint: hapticsAvailable ? "Uses short optional feedback only." : "Haptics are not available in this browser."
+      })
+    ),
+    settingsGroup(
+      "Lobby",
+      "settings-ticket--lobby",
+      checkboxField("auto-refresh", "Lobby auto-refresh", preferences.autoRefresh ?? true)
+    ),
+    element(
+      "div",
+      { className: "settings-save-deck" },
+      actionButton({ label: "Save settings", type: "submit" }),
+      saved
+    )
   );
   let clearArmed = false;
   const clearData = actionButton({
@@ -312,6 +362,39 @@ export function settingsScreen({
     }));
   }
   const latestSummary = completedSummaryReference(completedSummary ?? snapshot.completedSummary);
+  const installPanel = panel("Install and offline status", ...installContent);
+  installPanel.classList.add(
+    "settings-ticket",
+    "settings-install-ticket",
+    status.online === false
+      ? "settings-install-ticket--offline"
+      : status.updateReady
+      ? "settings-install-ticket--update"
+      : status.phase === "error" || status.phase === "unsupported"
+      ? "settings-install-ticket--unavailable"
+      : "settings-install-ticket--ready"
+  );
+  const recordPanel = playerStatisticsPanel(snapshot.playerStatistics, identity.displayName);
+  recordPanel.classList.add("settings-ticket", "settings-record-ticket");
+  const summaryPanel = latestSummary ? panel(
+    "Latest completed match",
+    copy(latestSummary.outcome),
+    copy(`${latestSummary.handCount} accepted hand ${latestSummary.handCount === 1 ? "result" : "results"} retained on this device.`),
+    bulletList(latestSummary.standings.map((entry, index) =>
+      `${index + 1}. ${entry.name}: ${entry.total}${entry.winner ? " — winner" : ""}`
+    ), { ordered: true })
+  ) : panel(
+    "Latest completed match",
+    copy("No completed match summary is stored on this device yet.")
+  );
+  summaryPanel.classList.add("settings-ticket", "settings-summary-ticket");
+  const privacyPanel = panel(
+    "Privacy and data",
+    copy("This device keeps only your local identity, preferences, aggregate player statistics, local fixture state, and public-only completed-match summaries. Statistics and summaries do not include card history, invite codes, room secrets, or recovery secrets."),
+    copy("Clear device data removes exactly those local records. It does not create a cloud account or delete another player’s device."),
+    clearData
+  );
+  privacyPanel.classList.add("settings-ticket", "settings-danger-ticket");
 
   return screenShell({
     id: "settings",
@@ -321,25 +404,10 @@ export function settingsScreen({
     content: [
       copy("Identity and preferences are stored locally and restored after refresh."),
       form,
-      panel("Install and offline status", ...installContent),
-      playerStatisticsPanel(snapshot.playerStatistics, identity.displayName),
-      latestSummary ? panel(
-        "Latest completed match",
-        copy(latestSummary.outcome),
-        copy(`${latestSummary.handCount} accepted hand ${latestSummary.handCount === 1 ? "result" : "results"} retained on this device.`),
-        bulletList(latestSummary.standings.map((entry, index) =>
-          `${index + 1}. ${entry.name}: ${entry.total}${entry.winner ? " — winner" : ""}`
-        ), { ordered: true })
-      ) : panel(
-        "Latest completed match",
-        copy("No completed match summary is stored on this device yet.")
-      ),
-      panel(
-        "Privacy and data",
-        copy("This device keeps only your local identity, preferences, aggregate player statistics, local fixture state, and public-only completed-match summaries. Statistics and summaries do not include card history, invite codes, room secrets, or recovery secrets."),
-        copy("Clear device data removes exactly those local records. It does not create a cloud account or delete another player’s device."),
-        clearData
-      )
+      installPanel,
+      recordPanel,
+      summaryPanel,
+      privacyPanel
     ]
   });
 }

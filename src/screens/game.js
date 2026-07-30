@@ -39,7 +39,19 @@ function commandButton(label, onActivate, { variant = "secondary", disabled = fa
   return button;
 }
 
-function cardNode(cardId, { wildRank, selected = false, interactive = false, onToggle, position, total } = {}) {
+function cardNode(cardId, {
+  wildRank,
+  selected = false,
+  interactive = false,
+  onToggle,
+  position,
+  total,
+  playable,
+  invalid = false,
+  grouped = false,
+  discardCandidate = false,
+  authorityState = "settled"
+} = {}) {
   const card = cardParts(cardId);
   if (!card) return element("span", { className: "game-card-error", text: "Unknown card" });
   const node = playingCard({
@@ -49,7 +61,12 @@ function cardNode(cardId, { wildRank, selected = false, interactive = false, onT
     interactive,
     onToggle,
     position,
-    total
+    total,
+    playable,
+    invalid,
+    grouped,
+    discardCandidate,
+    authorityState
   });
   node.dataset.cardId = cardId;
   return node;
@@ -281,7 +298,9 @@ function meldCard(slot, wildRank, { highlight = false } = {}) {
     dataset: {
       cardId: slot.cardId,
       wild: String(parts?.rank === wildRank),
-      represented: representedLabel(slot.represented)
+      represented: representedLabel(slot.represented),
+      cardVisibility: "public",
+      grouped: "true"
     },
     "aria-hidden": "true"
   });
@@ -305,11 +324,12 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     selected: new Set(),
     sort: initialPreferences.handSort,
     sheet: null,
-    composer: { order: [], representations: {} },
+    composer: { type: null, order: [], representations: {} },
     layoff: { meldId: null, placement: "END", representations: {} },
     replace: { meldId: null, wildCardId: null },
     discardConfirm: false,
     pending: false,
+    intentAuthorityState: "settled",
     message: "",
     messageTone: "status",
     acceptedFeedback: { action: "deal" },
@@ -454,6 +474,21 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     }
   }
 
+  function networkRail(presentation) {
+    if (!presentation) return null;
+    const rail = connectionState({
+      state: presentation.connectionState,
+      label: presentation.label,
+      detail: presentation.detail,
+      announce: false
+    });
+    rail.classList.add("game-network-rail");
+    rail.dataset.networkTruth = presentation.mode;
+    rail.dataset.blocking = String(Boolean(presentation.disabled));
+    rail.setAttribute("aria-label", `Network status: ${presentation.label}`);
+    return rail;
+  }
+
   function gameplayIsBlocked() {
     return ui.pending || ui.onlineBlocked || ui.queuedActions.size > 0;
   }
@@ -506,6 +541,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       render();
       return;
     }
+    ui.intentAuthorityState = "pending";
     ui.pending = true;
     render();
     try {
@@ -517,13 +553,16 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           announce(feedback.message, feedback.tone);
           reconcileLastAction(current().snapshot);
         } else {
+          ui.intentAuthorityState = "rejected";
           announce(`${rejectionCopy(result?.reason, result?.detail)} Nothing changed; your staged choices are still here.`);
         }
         return;
       }
       if (result?.accepted === false) {
+        ui.intentAuthorityState = "rejected";
         announce(rejectionCopy(result.reason, result.detail));
       } else if (result?.accepted === true && !result.duplicate) {
+        ui.intentAuthorityState = "settled";
         queueAcceptedFeedback(type);
         onAccepted?.(result);
         announce(type === "DISCARD" || type === "DEALER_INITIAL_DISCARD"
@@ -536,9 +575,11 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           navigate("/hand-result");
         }
       } else if (result?.reason) {
+        ui.intentAuthorityState = "rejected";
         announce(rejectionCopy(result.reason, result.detail));
       }
     } catch (error) {
+      ui.intentAuthorityState = "rejected";
       announce(error?.message || (isOnline
         ? "The action could not be queued. Nothing changed; your staged choices are still here."
         : "The local table could not check that action."));
@@ -552,6 +593,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     if (selected) ui.selected.add(cardId);
     else ui.selected.delete(cardId);
     ui.discardConfirm = false;
+    if (ui.intentAuthorityState === "rejected") ui.intentAuthorityState = "settled";
     if (selected) queueAcceptedFeedback("selection", { cardId });
     render();
   }
@@ -579,7 +621,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     if (["compose", "layoff", "replace", "discard"].includes(ui.sheet)) {
       ui.sheet = null;
     }
-    ui.composer = { order: [], representations: {} };
+    ui.composer = { type: null, order: [], representations: {} };
     ui.layoff = { meldId: null, placement: "END", representations: {} };
     ui.replace = { meldId: null, wildCardId: null };
     ui.discardConfirm = false;
@@ -656,13 +698,16 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     const feedback = onlineActionCopy(action);
     if (phase === "accepted") {
       ui.queuedActions.delete(commandId);
+      ui.intentAuthorityState = "settled";
       queueAcceptedFeedback(queued?.type);
       queued?.onAccepted?.(action);
       announce(feedback?.message ?? "The host accepted that action.", "success");
     } else if (phase === "rejected") {
       ui.queuedActions.delete(commandId);
+      ui.intentAuthorityState = "rejected";
       announce(`${rejectionCopy(action.reason, action.detail)} Nothing changed; your staged choices are still here.`);
     } else if (feedback) {
+      if (phase === "pending" || phase === "uncertain") ui.intentAuthorityState = phase;
       announce(feedback.message, feedback.tone);
     }
   }
@@ -744,9 +789,14 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     });
     const interpretations = legalMeldInterpretations(preview, { wildRank: hand.wildRank });
     const types = new Set(interpretations.map(({ type: candidateType }) => candidateType));
-    const type = types.size === 1 ? interpretations[0].type : null;
+    const inferredType = types.size === 1 ? interpretations[0].type : null;
+    const chosenType = types.has(ui.composer.type) ? ui.composer.type : null;
+    const type = inferredType ?? chosenType;
+    const typedInterpretations = type
+      ? interpretations.filter(({ type: candidateType }) => candidateType === type)
+      : [];
     const wildCards = selectedWildCards(chosen, hand.wildRank);
-    const compatibleInterpretations = interpretations.filter((interpretation) => (
+    const compatibleInterpretations = typedInterpretations.filter((interpretation) => (
       interpretationMatchesSelections(
         interpretation,
         wildCards,
@@ -754,18 +804,17 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
         hand.wildRank
       )
     ));
-    const selectedInterpretation = type === "SET" && interpretations.length === 1
-      ? interpretations[0]
-      : compatibleInterpretations.length === 1
-        ? compatibleInterpretations[0]
-        : null;
+    const selectedInterpretation = compatibleInterpretations.length === 1
+      ? compatibleInterpretations[0]
+      : null;
+    const typeChoiceRequired = types.size > 1 && !type;
     let representationProblem = null;
     if (chosen.length < 3) {
       representationProblem = "Select at least three cards to add a set or run.";
     } else if (!interpretations.length) {
       representationProblem = "Those cards do not form one complete legal set or run.";
-    } else if (types.size > 1) {
-      representationProblem = "Those cards have more than one legal meaning. Add or remove a card so the game can detect one meld.";
+    } else if (typeChoiceRequired) {
+      representationProblem = null;
     } else if (!compatibleInterpretations.length) {
       representationProblem = "That wild rank does not complete this run.";
     } else if (!selectedInterpretation) {
@@ -807,7 +856,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     );
     const wildControls = type === "RUN"
       ? wildCards.map((cardId) => {
-          const candidates = interpretations.filter((interpretation) => (
+          const candidates = typedInterpretations.filter((interpretation) => (
             interpretationMatchesSelections(
               interpretation,
               wildCards,
@@ -845,19 +894,41 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
             return copy(`${cardDisplayName(cardId)} automatically counts as ${represented.rank} in this set.`);
           })
         : [];
+    const typeChoice = types.size > 1
+      ? element("fieldset", { className: "game-choice" },
+          element("legend", { text: "Choose meld type" }),
+          choice("Set", type === "SET", () => {
+            ui.composer.type = "SET";
+            ui.composer.representations = {};
+            render();
+          }, { name: "meld-type" }),
+          choice("Run", type === "RUN", () => {
+            ui.composer.type = "RUN";
+            ui.composer.representations = {};
+            render();
+          }, { name: "meld-type" })
+        )
+      : null;
     return gameSheet("Compose meld", "Edit the staged cards here. Sets resolve wilds automatically; runs offer only legal open positions.", [
       element("p", { text: "Toggle cards to add or remove them without leaving this composer." }),
       composerCards,
       orderedCards,
+      typeChoice,
       type
         ? element("p", {
           className: "game-meld-detected",
           role: "status",
           text: `${type === "RUN" ? "Run" : "Set"} detected`
         })
-        : copy("Meld type will appear when the selected cards form one legal meld."),
+        : types.size > 1
+          ? copy("These cards form a legal set and a legal run. Choose how to play them.")
+          : copy("Meld type will appear when the selected cards form one legal meld."),
       ...wildControls,
-      representationProblem ? element("p", { className: "game-inline-error", text: representationProblem }) : copy("Selection is staged locally. It is not on the shared table until accepted."),
+      typeChoiceRequired
+        ? copy("Choose Set or Run to continue.")
+        : representationProblem
+          ? element("p", { className: "game-inline-error", text: representationProblem })
+          : copy("Selection is staged locally. It is not on the shared table until accepted."),
       stack(
         commandButton("Add set or run", () => {
           if (!guardTablePlay(hand, localSeatId)) return;
@@ -884,12 +955,15 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
             onAccepted: () => {
               ui.sheet = null;
               ui.selected.clear();
-              ui.composer = { order: [], representations: {} };
+              ui.composer = { type: null, order: [], representations: {} };
             }
           });
         }, {
           variant: "primary",
-          disabled: Boolean(representationProblem) || !selectedInterpretation || gameplayIsBlocked(),
+          disabled: typeChoiceRequired
+            || Boolean(representationProblem)
+            || !selectedInterpretation
+            || gameplayIsBlocked(),
           name: "place-meld"
         }),
         commandButton("Cancel composition", closeSheet, { variant: "quiet", name: "cancel-meld" })
@@ -1186,7 +1260,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           if (!guardTablePlay(hand, localSeatId)) return;
           const chosen = selectedOrAnnounce(cards);
           if (!chosen) return;
-          ui.composer = { order: chosen, representations: {} };
+          ui.composer = { type: null, order: chosen, representations: {} };
           openActionSubsheet("compose");
         }, { variant: "primary", disabled: gameplayIsBlocked() || selectedCount < 1, name: "open-meld" }),
         commandButton("Add to table", () => {
@@ -1236,8 +1310,9 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     );
   }
 
-  function actionLaunch() {
+  function actionLaunch(hand, localSeatId) {
     const expanded = ui.sheet === "actions";
+    const dockCopy = phaseCopy(hand.phase, hand.activeSeatId === localSeatId);
     const trigger = commandButton(expanded ? "Hide actions" : "Actions", () => {
       if (expanded) closeSheet();
       else openSheet("actions");
@@ -1247,7 +1322,14 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     });
     trigger.setAttribute("aria-expanded", String(expanded));
     trigger.setAttribute("aria-controls", "game-action-menu");
-    return element("section", { className: "game-action-launch", "aria-label": "Game actions" }, trigger);
+    return element("section", {
+      className: "game-action-launch game-conductor-call",
+      "aria-label": "Game actions",
+      dataset: { phaseStep: dockCopy.step }
+    },
+    element("span", { className: "game-conductor-call__label", text: dockCopy.title }),
+    element("span", { className: "game-conductor-call__detail", text: dockCopy.detail }),
+    trigger);
   }
 
   function gameDetails({ developer, hand, activeName }) {
@@ -1277,16 +1359,25 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
 
   function gameSheet(title, description, content) {
     return element("section", {
-      className: "game-sheet",
+      className: "game-sheet game-decision-bench",
       role: "dialog",
       "aria-modal": "true",
       "aria-label": title,
-      dataset: { gameSheet: title.toLowerCase().replaceAll(" ", "-") }
-    }, heading(title, 2), copy(description), ...content);
+      dataset: {
+        gameSheet: title.toLowerCase().replaceAll(" ", "-"),
+        decisionBench: "true"
+      }
+    },
+    element("header", { className: "game-decision-bench__header" },
+      element("span", { className: "game-decision-bench__eyebrow", text: "Decision bench · staged locally" }),
+      heading(title, 2),
+      copy(description)
+    ),
+    element("div", { className: "game-decision-bench__body" }, ...content));
   }
 
-  function choice(label, checked, onChange) {
-    const input = element("input", { type: "radio", checked, onChange });
+  function choice(label, checked, onChange, { name } = {}) {
+    const input = element("input", { type: "radio", checked, onChange, name });
     return element("label", { className: "game-radio" }, input, label);
   }
 
@@ -1318,12 +1409,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     workspace.replaceChildren(liveAnnouncer);
     if (!view || !hand) {
       workspace.append(
-        networkPresentation ? connectionState({
-          state: networkPresentation.connectionState,
-          label: networkPresentation.label,
-          detail: networkPresentation.detail,
-          announce: false
-        }) : null,
+        networkRail(networkPresentation),
         element("section", { className: "screen-panel" },
           heading(isOnline ? "Online game unavailable" : "Local game unavailable"),
           copy(isOnline
@@ -1342,11 +1428,12 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     const cards = sortCardIds(ownCards, ui.sort);
     const revision = view.revision ?? snapshot.state?.revision;
     promptDrawActionsForTurn(hand, localSeatId, revision);
-    workspace.className = `game-workspace${isOnline ? " game-workspace--online" : ""}`;
+    workspace.className = `game-workspace game-workspace--compartment${isOnline ? " game-workspace--online" : ""}`;
     workspace.dataset.revision = String(revision ?? "");
     workspace.dataset.phase = hand.phase;
     workspace.dataset.activeSeatId = hand.activeSeatId;
     workspace.dataset.networkMode = networkPresentation?.mode ?? "local";
+    workspace.dataset.authorityState = ui.intentAuthorityState;
     workspace.setAttribute("aria-busy", String(networkPresentation?.mode === "pending" || ui.pending));
     const activeName = nameForSeat(view, hand.activeSeatId);
     const selected = ui.selected;
@@ -1367,7 +1454,11 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       session?.runAutomatedMatch ? commandButton("Run automated match", runFullFixture, { variant: "quiet", name: "run-automated-match" }) : null
     ) : null;
 
-    const players = element("div", { className: "player-list", dataset: { sharedPlayers: "true" } },
+    const players = element("div", {
+      className: "player-list game-seat-perimeter",
+      "aria-label": "Players around the table",
+      dataset: { sharedPlayers: "true", compartmentSeats: "true" }
+    },
       view.seatOrder.map((seatId, index) => playerChip({
         name: nameForSeat(view, seatId),
         marker: seatId === localSeatId
@@ -1384,7 +1475,11 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       score: view.seats?.[seatId]?.cumulativeScore ?? 0,
       total: view.seats?.[seatId]?.cumulativeScore ?? 0
     }));
-    const tableMelds = element("div", { className: "game-meld-list", "aria-label": "Shared table melds" },
+    const tableMelds = element("div", {
+      className: "game-meld-list game-meld-sidings",
+      "aria-label": "Shared table melds",
+      dataset: { tableSiding: "melds" }
+    },
       hand.melds.length ? hand.melds.map((meld) => element("button", {
         type: "button",
         className: "game-meld",
@@ -1397,21 +1492,34 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           else render();
         }
       },
-      element("strong", { text: `${meld.type.toLowerCase()} · ${nameForSeat(view, meld.originatingSeatId)}` }),
-      element("span", { className: "game-meld-summary", text: meldSummary(meld, view) }),
       element("div", { className: "meld-group", "aria-hidden": "true" },
         meld.slots.map((slot) => meldCard(slot, hand.wildRank))))) : copy("No melds are on the shared table yet.")
     );
     const discardCardId = hand.discardCardIds?.at(-1);
-    const table = element("section", { className: "screen-panel game-table", "aria-labelledby": "shared-table-title" },
-      element("h2", { id: "shared-table-title", text: "Shared table" }),
+    const table = element("section", {
+      className: "screen-panel game-table game-compartment-table",
+      "aria-labelledby": "shared-table-title",
+      dataset: { tableComposition: "compartment" }
+    },
+      element("header", { className: "game-table__header" },
+        element("span", { className: "game-table__eyebrow", text: `H ${String(hand.index).padStart(2, "0")} / 13` }),
+        element("h2", { id: "shared-table-title", text: "Shared table" }),
+        element("span", { className: "game-table__wild", text: `Wild rank · ${hand.wildRank}` })
+      ),
       players,
       scoreStrip({ label: "Cumulative scores", activePlayerId: hand.activeSeatId, scores: scoreEntries }),
       tableMelds,
-      element("div", { className: "stock-discard" },
-        element("div", {}, heading(`Stock · ${hand.stockCount}`, 3), cardBack({ label: `Stock pile, ${hand.stockCount} face-down cards` })),
-        element("div", {}, heading("Discard pile", 3), discardCardId
-          ? cardNode(discardCardId, { wildRank: hand.wildRank, interactive: false })
+      element("div", { className: "stock-discard game-table-spine", dataset: { tableSpine: "true" } },
+        element("div", { className: "game-pile game-pile--stock" },
+          heading(`Stock · ${hand.stockCount}`, 3),
+          cardBack({ label: `Stock pile, ${hand.stockCount} face-down cards` })
+        ),
+        element("div", { className: "game-pile game-pile--discard" }, heading("Discard pile", 3), discardCardId
+          ? cardNode(discardCardId, {
+              wildRank: hand.wildRank,
+              interactive: false,
+              discardCandidate: hand.phase === "AWAITING_DRAW"
+            })
           : copy("No opening discard yet.")))
     );
     const changeSort = (value) => {
@@ -1427,6 +1535,9 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     const canSelect = !gameplayIsBlocked()
       && hand.activeSeatId === localSeatId
       && ["DEALER_INITIAL_DISCARD", "TABLE_PLAY", "AWAITING_DISCARD"].includes(hand.phase);
+    const selectedAuthorityState = ui.pending || ui.queuedActions.size
+      ? "pending"
+      : ui.intentAuthorityState;
     const tray = handTray({
       label: `Your hand · ${cards.length} cards`,
       cards: cards.map((cardId) => {
@@ -1436,6 +1547,11 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           wild: card?.rank === hand.wildRank,
           selected: selected.has(cardId),
           recentlyDrawn: cardId === ui.recentDrawnCardId,
+          playable: canSelect,
+          grouped: selected.size > 1 && selected.has(cardId),
+          discardCandidate: selected.has(cardId)
+            && ["DEALER_INITIAL_DISCARD", "AWAITING_DISCARD"].includes(hand.phase),
+          authorityState: selected.has(cardId) ? selectedAuthorityState : "settled",
           disabled: !canSelect,
           onToggle: (next) => setSelection(cardId, next)
         };
@@ -1492,17 +1608,16 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     );
     const handSection = element(
       "section",
-      { className: "game-private-hand", "aria-label": "Your private hand" },
+      {
+        className: "game-private-hand game-private-hand--foreground",
+        "aria-label": "Your private hand",
+        dataset: { handComposition: "curved-foreground-tray" }
+      },
       tray,
       handTools
     );
     if (networkPresentation) {
-      workspace.append(connectionState({
-        state: networkPresentation.connectionState,
-        label: networkPresentation.label,
-        detail: networkPresentation.detail,
-        announce: false
-      }));
+      workspace.append(networkRail(networkPresentation));
     }
     workspace.append(
       element("p", {
@@ -1514,7 +1629,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       gameDetails({ developer, hand, activeName }),
       table,
       handSection,
-      actionLaunch()
+      actionLaunch(hand, localSeatId)
     );
     const currentHandList = workspace.querySelector("[data-private-hand] .hand-tray__list");
     if (currentHandList) currentHandList.scrollLeft = ui.handScrollLeft;

@@ -24,7 +24,20 @@ const RANK_NAMES = Object.freeze({
   WILD: "Wild"
 });
 
-function cardLabel({ rank, suit, wild, selected, recentlyDrawn, position, total }) {
+function cardLabel({
+  rank,
+  suit,
+  wild,
+  selected,
+  recentlyDrawn,
+  playable,
+  invalid,
+  grouped,
+  discardCandidate,
+  authorityState,
+  position,
+  total
+}) {
   const normalizedRank = String(rank ?? "").toUpperCase();
   const rankName = RANK_NAMES[normalizedRank] || String(rank || "Unknown card");
   const suitInfo = SUITS[String(suit ?? "").toLowerCase()];
@@ -35,6 +48,25 @@ function cardLabel({ rank, suit, wild, selected, recentlyDrawn, position, total 
   }
   if (recentlyDrawn) {
     parts.push("just drawn");
+  }
+  if (playable === true) {
+    parts.push("playable");
+  }
+  if (invalid) {
+    parts.push("invalid");
+  }
+  if (grouped) {
+    parts.push("grouped");
+  }
+  if (discardCandidate) {
+    parts.push("discard candidate");
+  }
+  if (authorityState === "pending") {
+    parts.push("pending host confirmation");
+  } else if (authorityState === "rejected") {
+    parts.push("rejected, still staged");
+  } else if (authorityState === "uncertain") {
+    parts.push("outcome uncertain");
   }
   parts.push(selected ? "selected" : "not selected");
 
@@ -63,6 +95,11 @@ export function playingCard({
   wild = false,
   selected = false,
   recentlyDrawn = false,
+  playable,
+  invalid = false,
+  grouped = false,
+  discardCandidate = false,
+  authorityState = "settled",
   position,
   total,
   disabled = false,
@@ -80,13 +117,41 @@ export function playingCard({
   }
 
   const card = element(interactive ? "button" : "article", {
-    className: `playing-card${suitInfo?.red ? " playing-card--red" : ""}${recentlyDrawn ? " playing-card--recent" : ""}`,
+    className: [
+      "playing-card",
+      suitInfo?.red ? "playing-card--red" : "",
+      recentlyDrawn ? "playing-card--recent" : "",
+      grouped ? "playing-card--grouped" : "",
+      discardCandidate ? "playing-card--discard-candidate" : "",
+      invalid ? "playing-card--invalid" : "",
+      authorityState !== "settled" ? `playing-card--${authorityState}` : ""
+    ].filter(Boolean).join(" "),
     attributes: {
       type: interactive ? "button" : undefined,
-      "aria-label": cardLabel({ rank, suit, wild, selected, recentlyDrawn, position, total }),
+      "aria-label": cardLabel({
+        rank,
+        suit,
+        wild,
+        selected,
+        recentlyDrawn,
+        playable,
+        invalid,
+        grouped,
+        discardCandidate,
+        authorityState,
+        position,
+        total
+      }),
       "aria-pressed": interactive ? String(Boolean(selected)) : undefined,
+      "aria-invalid": interactive && invalid ? "true" : undefined,
       "data-selected": String(Boolean(selected)),
       "data-recently-drawn": String(Boolean(recentlyDrawn)),
+      "data-playable": playable === undefined ? undefined : String(Boolean(playable)),
+      "data-invalid": String(Boolean(invalid)),
+      "data-grouped": String(Boolean(grouped)),
+      "data-discard-candidate": String(Boolean(discardCandidate)),
+      "data-authority-state": authorityState,
+      "data-card-visibility": interactive ? "private" : "public",
       "data-rank": normalizedRank,
       "data-suit": suitInfo?.name,
       "data-wild": String(Boolean(wild || normalizedRank === "WILD"))
@@ -100,12 +165,23 @@ export function playingCard({
   const displayRank = normalizedRank === "WILD" ? "★" : normalizedRank;
   const displaySuit = suitInfo?.symbol || "★";
   card.append(
+    element("span", {
+      className: "playing-card__keyline",
+      attributes: { "aria-hidden": "true" }
+    }),
     cardFacePart("playing-card__corner", displayRank, displaySuit),
     element("span", {
       className: "playing-card__centre",
       text: displaySuit,
       attributes: { "aria-hidden": "true" }
     }),
+    ...(["J", "Q", "K"].includes(normalizedRank)
+      ? [element("span", {
+          className: "playing-card__court-mark",
+          text: normalizedRank,
+          attributes: { "aria-hidden": "true" }
+        })]
+      : []),
     cardFacePart(
       "playing-card__corner playing-card__corner--end",
       displayRank,
@@ -128,6 +204,21 @@ export function playingCard({
       element("span", {
         className: "playing-card__recent",
         text: "DRAWN",
+        attributes: { "aria-hidden": "true" }
+      })
+    );
+  }
+
+  if (authorityState !== "settled") {
+    const authorityCopy = {
+      pending: "PENDING",
+      rejected: "RETRY",
+      uncertain: "CHECKING"
+    }[authorityState] ?? String(authorityState).toUpperCase();
+    card.append(
+      element("span", {
+        className: "playing-card__authority",
+        text: authorityCopy,
         attributes: { "aria-hidden": "true" }
       })
     );
@@ -156,6 +247,11 @@ export function playingCard({
           wild,
           selected: nextSelected,
           recentlyDrawn,
+          playable,
+          invalid,
+          grouped,
+          discardCandidate,
+          authorityState,
           position,
           total
         })
@@ -184,6 +280,15 @@ export function cardBack({
     }
   });
   back.append(
+    element("span", {
+      className: "card-back__rails",
+      attributes: { "aria-hidden": "true" }
+    }),
+    element("span", {
+      className: "card-back__monogram",
+      text: "CR",
+      attributes: { "aria-hidden": "true" }
+    }),
     element("span", {
       className: "visually-hidden",
       text: label
@@ -245,4 +350,3 @@ export function handTray({
   tray.append(header, list);
   return tray;
 }
-

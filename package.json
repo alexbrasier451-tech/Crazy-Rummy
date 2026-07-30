@@ -1,6 +1,6 @@
 {
   "name": "crazy-rummy",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,6 +10,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "validate:v11-assets": "node tools/validate-v11-assets.mjs",
+    "report:v11-budgets": "node tools/report-v11-budgets.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test --test-isolation=none \"tests/unit/*.test.mjs\"",
     "test:unit": "node --test --test-isolation=none \"tests/unit/*.test.mjs\"",
@@ -23,6 +25,11 @@
     "test:local-game": "node tests/browser/local-game.mjs",
     "test:stage7-results": "node tests/browser/stage7-results.mjs",
     "test:stage7": "pnpm test:smoke && pnpm test:stage7-results && pnpm test:local-game",
+    "test:stage1-concepts": "node tests/browser/stage1-concepts.mjs",
+    "test:v11-pregame": "node tests/browser/stage1-1-3-pregame.mjs",
+    "test:v11-results-reference": "node tests/browser/v11-stage-1-1-5.mjs",
+    "capture:v11-visual-matrix": "node tests/browser/v11-visual-matrix.mjs",
+    "capture:stage1-keyframes": "node tests/browser/capture-stage1-keyframes.mjs --out docs/v1.1/stage-1.1.1/exports",
     "check": "pnpm test:unit && pnpm build && pnpm test:online-lobby && pnpm test:online-transport && pnpm test:online-game && pnpm test:game-flow && pnpm test:pwa && pnpm test:github-pages && pnpm test:stage7"
   },
   "devDependencies": {

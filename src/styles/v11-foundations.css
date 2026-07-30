@@ -1,0 +1,221 @@
+/*
+ * v1.1 shared material and composition layer.
+ * Route programmes add their silhouettes in dedicated files after this one.
+ */
+
+body {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 50% -10%, rgb(27 74 57 / 0.5), transparent 36rem),
+    radial-gradient(circle at 8% 18%, rgb(224 182 79 / 0.08), transparent 22rem),
+    linear-gradient(112deg, transparent 0 46%, rgb(245 239 223 / 0.018) 49%, transparent 52%),
+    var(--surface-void);
+}
+
+body::before,
+body::after {
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+}
+
+body::before {
+  inset: 0;
+  opacity: var(--texture-baize-opacity);
+  background:
+    repeating-linear-gradient(93deg, transparent 0 7px, rgb(245 239 223 / 0.025) 8px 9px),
+    repeating-linear-gradient(3deg, transparent 0 11px, rgb(0 0 0 / 0.12) 12px 13px);
+  mask-image: radial-gradient(ellipse at 50% 35%, #000, transparent 76%);
+}
+
+body::after {
+  inset: 0 auto 0 50%;
+  width: min(44rem, 72vw);
+  opacity: var(--effect-reflection-opacity);
+  background: linear-gradient(
+    102deg,
+    transparent 0 46%,
+    rgb(245 239 223 / 0.12) 49%,
+    transparent 52% 64%,
+    rgb(224 182 79 / 0.08) 66%,
+    transparent 69%
+  );
+  filter: blur(var(--effect-blur));
+  transform: translateX(-50%);
+}
+
+.screen-shell {
+  position: relative;
+  z-index: var(--z-furniture);
+}
+
+.screen-shell__header {
+  position: relative;
+  border-block: 1px solid var(--edge-subtle);
+  padding: var(--space-3) var(--space-4);
+  background:
+    linear-gradient(180deg, rgb(245 239 223 / 0.055), transparent 28%),
+    linear-gradient(90deg, rgb(224 182 79 / 0.05), transparent 32% 68%, rgb(224 182 79 / 0.04)),
+    var(--surface-carriage);
+  box-shadow:
+    inset 0 1px 0 rgb(245 239 223 / 0.08),
+    0 0.6rem 1.8rem rgb(0 0 0 / 0.28);
+}
+
+.screen-shell__header::after {
+  position: absolute;
+  inset: auto var(--space-4) -0.25rem;
+  height: 0.25rem;
+  background:
+    radial-gradient(circle, var(--state-current) 0 2px, transparent 2.5px) left center / 2rem 100% repeat-x,
+    linear-gradient(var(--state-current), var(--state-current)) center / 100% 1px no-repeat;
+  content: "";
+  opacity: 0.54;
+}
+
+.screen-shell__context {
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  letter-spacing: 0.16em;
+}
+
+.screen-shell__title {
+  font-stretch: condensed;
+  letter-spacing: 0.015em;
+}
+
+.screen-shell__content {
+  position: relative;
+}
+
+.screen-panel,
+.surface {
+  border-color: var(--edge-material);
+  background:
+    linear-gradient(145deg, rgb(245 239 223 / 0.065), transparent 28%),
+    radial-gradient(circle at 80% 0, rgb(224 182 79 / 0.055), transparent 16rem),
+    var(--surface-table);
+}
+
+.screen-panel::after {
+  position: absolute;
+  inset: 0.45rem 0.45rem 0.45rem auto;
+  border-inline-end: 1px solid rgb(245 239 223 / 0.12);
+  content: "";
+  pointer-events: none;
+}
+
+.action--primary {
+  border-color: var(--state-current);
+  background:
+    linear-gradient(180deg, var(--brass-300), var(--brass-500) 58%, #b88a2e);
+}
+
+.action:focus-visible,
+.playing-card:focus-visible,
+.marker-option:focus-within {
+  box-shadow: var(--focus-ring);
+}
+
+.v11-route-rail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.v11-route-rail::before,
+.v11-route-rail::after {
+  min-width: 1.2rem;
+  height: 0.34rem;
+  background:
+    linear-gradient(var(--state-current), var(--state-current)) 0 0 / 100% 1px no-repeat,
+    linear-gradient(var(--state-current), var(--state-current)) 0 0.24rem / 100% 1px no-repeat;
+  content: "";
+  opacity: 0.68;
+}
+
+.v11-ticket {
+  position: relative;
+  border: 1px solid rgb(11 16 14 / 0.28);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle at 0 50%, transparent 0 0.42rem, var(--surface-ticket) 0.45rem),
+    radial-gradient(circle at 100% 50%, transparent 0 0.42rem, var(--surface-ticket) 0.45rem);
+  box-shadow: var(--shadow-tactile);
+  color: var(--text-on-ticket);
+}
+
+.v11-ticket::after {
+  position: absolute;
+  inset: var(--space-2);
+  border: 1px dashed rgb(11 16 14 / 0.26);
+  border-radius: calc(var(--radius-md) - 0.25rem);
+  content: "";
+  pointer-events: none;
+}
+
+html[data-quality="degraded"] body::before,
+html[data-quality="degraded"] body::after {
+  display: none;
+}
+
+@media (max-width: 29.9375rem) {
+  .screen-shell__header {
+    margin-inline: calc(-1 * var(--safe-right));
+    padding-inline: var(--safe-right);
+  }
+
+  body::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::after {
+    display: none;
+  }
+}
+
+html[data-motion="reduced"] body::after {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  body,
+  .screen-shell__header,
+  .screen-panel,
+  .surface,
+  .v11-ticket {
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  body::before,
+  body::after,
+  .screen-shell__header::after,
+  .screen-panel::after {
+    display: none;
+  }
+
+  .screen-shell__header,
+  .screen-panel,
+  .surface,
+  .v11-ticket {
+    border: 2px solid CanvasText;
+  }
+
+  .v11-route-rail::before,
+  .v11-route-rail::after {
+    background: CanvasText;
+  }
+}

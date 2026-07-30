@@ -203,6 +203,28 @@ test("meld composition derives only legal wild meanings from the selected cards"
     slot("jack", "hearts:J"),
     slot("wild", "diamonds:4")
   ]), { wildRank: "4" }), []);
+
+  const twoWildInterpretations = legalMeldInterpretations(meld(undefined, [
+    slot("wild-clubs", "clubs:4"),
+    slot("wild-diamonds", "diamonds:4"),
+    slot("jack", "clubs:J")
+  ]), { wildRank: "4" });
+  assert.equal(
+    twoWildInterpretations.filter(({ type }) => type === MELD_TYPE.SET).length,
+    1,
+    "two wilds plus one natural must retain their legal set interpretation"
+  );
+  assert.equal(
+    twoWildInterpretations.filter(({ type }) => type === MELD_TYPE.RUN).length,
+    6,
+    "the same cards may also have multiple declared run interpretations"
+  );
+  assert.deepEqual(
+    twoWildInterpretations.find(({ type }) => type === MELD_TYPE.SET).meld.slots
+      .filter(({ cardId }) => cardId !== "clubs:J")
+      .map(({ represented }) => represented),
+    [{ rank: "J" }, { rank: "J" }]
+  );
 });
 
 test("allows only set growth or contiguous run end extensions", () => {

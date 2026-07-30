@@ -1,2 +1,6 @@
 @import "./components.css";
 @import "./screens.css";
+@import "./v11-foundations.css";
+@import "./v11-pregame.css";
+@import "./v11-gameplay.css";
+@import "./v11-results-reference.css";

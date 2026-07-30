@@ -18,7 +18,7 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
   let pending = null;
   let message = null;
   let enteringStartedMatch = false;
-  const content = element("div", { className: "online-workspace" });
+  const content = element("div", { className: "online-workspace v11-waiting-room" });
 
   const copyInvite = async (code) => {
     try {
@@ -50,7 +50,17 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
   const render = () => {
     const room = snapshot.room?.table;
     if (!room) {
-      content.replaceChildren(connectionState({ state: "offline", label: "No active waiting room", detail: "Join or create a table from the lobby.", announce: true }), stack(actionButton({ label: "Return to Lobby", onActivate: () => navigate("/lobby") })));
+      content.replaceChildren(
+        element(
+          "section",
+          { className: "v11-waiting-empty", "aria-labelledby": "waiting-empty-title" },
+          element("span", { className: "v11-waiting-empty__seat", "aria-hidden": "true", text: "13" }),
+          element("h2", { id: "waiting-empty-title", text: "No active waiting room" }),
+          connectionState({ state: "offline", label: "No active waiting room", detail: "Join or create a table from the lobby.", announce: true }),
+          copy("This carriage has no confirmed seat for this device. No invitation or recovery has been invented."),
+          stack(actionButton({ label: "Return to Lobby", onActivate: () => navigate("/lobby") }))
+        )
+      );
       return;
     }
     const table = tableSummary(room);
@@ -74,14 +84,38 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
     const localMarker = normalizePreferences(localSession?.getSnapshot?.().preferences).marker;
     const seatNodes = [...seats].map((seat, index) => {
       const current = (seat.playerId ?? seat.id) === localPlayerId;
-      return playerChip({
+      const accepted = seat.acceptedAt !== null && seat.acceptedAt !== undefined;
+      const node = playerChip({
         name: seat.displayName ?? seat.name ?? `Player ${index + 1}`,
         marker: current ? localMarker : (seat.marker ?? "●"),
         state: seat.connectionState === "reconnecting" ? "reconnecting" : seat.ready ? "ready" : "waiting",
         current
       });
+      node.classList.add("v11-seat-plaque");
+      node.dataset.accepted = String(accepted);
+      node.dataset.ready = String(Boolean(seat.ready));
+      node.setAttribute("aria-label", [
+        seat.displayName ?? seat.name ?? `Player ${index + 1}`,
+        current ? "current turn" : null,
+        seat.ready ? "Ready" : "Waiting",
+        accepted ? "seat accepted" : "seat awaiting acceptance",
+        seat.connectionState === "reconnecting" ? "Reconnecting" : "Connected",
+        current ? "You" : null
+      ].filter(Boolean).join(", "));
+      node.append(element("span", {
+        className: "v11-seat-plaque__accepted",
+        text: accepted ? "Accepted" : "Awaiting acceptance"
+      }));
+      if (current) node.append(element("span", { className: "v11-seat-plaque__you", text: "You" }));
+      return node;
     });
-    for (let index = occupied; index < capacity; index += 1) seatNodes.push(playerChip({ name: "Open seat", marker: "+", state: "waiting" }));
+    for (let index = occupied; index < capacity; index += 1) {
+      const openSeat = playerChip({ name: "Open seat", marker: "+", state: "waiting" });
+      openSeat.classList.add("v11-seat-plaque", "v11-seat-plaque--open");
+      openSeat.dataset.accepted = "false";
+      openSeat.dataset.ready = "false";
+      seatNodes.push(openSeat);
+    }
 
     const joinDetails = table.visibility === "CLOSED"
       ? panel(
@@ -124,10 +158,67 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
         )
       : null;
 
-    content.replaceChildren(
-      connectionState({ state, label: state === "online" ? `${occupied} of ${capacity} players · ${readySeats.length} ready` : "Waiting room needs attention", detail: snapshot.error ? onlineErrorCopy(snapshot.error) : "Room updates follow the lobby session.", announce: true }),
-      joinDetails,
-      panel("Seats", element("div", { className: "seat-grid" }, seatNodes)),
+    const roomSignal = connectionState({
+      state,
+      label: state === "online"
+        ? `${occupied} of ${capacity} players · ${readySeats.length} ready`
+        : "Waiting room needs attention",
+      detail: snapshot.error ? onlineErrorCopy(snapshot.error) : "Room updates follow the lobby session.",
+      announce: true
+    });
+    roomSignal.classList.add("v11-waiting-signal");
+    const roomTicket = element(
+      "section",
+      { className: "v11-room-ticket", "aria-labelledby": "v11-room-ticket-title" },
+      element(
+        "div",
+        { className: "v11-room-ticket__stamp", "aria-hidden": "true" },
+        element("span", { text: table.visibility === "CLOSED" ? "PRIVATE" : "OPEN" }),
+        element("small", { text: `${occupied}/${capacity}` })
+      ),
+      element("p", { className: "v11-room-ticket__eyebrow", text: "Carriage assembly · Route 13" }),
+      element("h2", { id: "v11-room-ticket-title", text: table.name }),
+      copy(`${table.visibility === "CLOSED" ? "Closed table" : "Open table"} · ${table.rules}`, "v11-room-ticket__meta"),
+      roomSignal,
+      joinDetails
+    );
+    const seatingPlan = element(
+      "section",
+      {
+        className: `v11-seating-plan${canStart ? " v11-seating-plan--departure-ready" : ""}`,
+        "aria-labelledby": "v11-seats-title"
+      },
+      element("h2", { id: "v11-seats-title", text: "Seats" }),
+      element(
+        "div",
+        { className: "v11-seating-plan__field" },
+        element(
+          "div",
+          { className: "v11-seating-plan__oval", "aria-hidden": "true" },
+          element("span", { text: canStart ? "DEPART" : "ASSEMBLING" }),
+          element("small", { text: `${readySeats.length} ready · ${occupied} seated` })
+        ),
+        element("div", { className: "seat-grid", role: "list", "aria-label": "Accepted seating order" }, seatNodes)
+      ),
+      element(
+        "div",
+        {
+          className: "v11-departure-line",
+          role: "img",
+          "aria-label": canStart
+            ? "Departure checks complete. The route now reaches Depart."
+            : "Departure route is waiting for all checks."
+        },
+        element("span", { text: "Lobby" }),
+        element("i", { "aria-hidden": "true" }),
+        element("span", { text: "Depart" })
+      )
+    );
+    if (readiness) readiness.classList.add("v11-departure-checks");
+
+    content.replaceChildren(...[
+      roomTicket,
+      seatingPlan,
       panel(
         "This device's seat",
         copy(localSeat
@@ -143,7 +234,23 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
           : actionButton({ label: ready ? "I'm not ready" : "I'm ready", pending: pending === "ready", disabled: !snapshot.online || busy || !localSeat, onActivate: () => run("ready", "setReady", { ready: !ready }) }),
         isHost && !isConnecting && room.status !== "STARTED" ? [
           actionButton({ label: canStart ? "Start match" : "Start match (waiting)", variant: "primary", pending: pending === "start", disabled: !snapshot.online || busy || !canStart, onActivate: () => run("start", "startMatch") }),
-          actionButton({ label: "Cancel table…", variant: "danger", pending: pending === "cancel", disabled: !snapshot.online || busy || room.status !== "OPEN", onActivate: () => confirmAndRun("cancel", "cancelTable", "Cancel this table for every seated player? This cannot be undone.") })
+          element("p", {
+            className: "v11-start-blocker",
+            role: "status",
+            text: canStart
+              ? "All departure checks are complete. The host may start the match."
+              : !enoughPlayers
+                ? "Start blocked: at least 2 accepted players are required."
+                : !everyoneReady
+                  ? "Start blocked: every seated player must select Ready."
+                  : "Start blocked: the lobby must confirm every ready seat."
+          }),
+          element(
+            "section",
+            { className: "v11-host-actions", "aria-labelledby": "v11-host-actions-title" },
+            element("h3", { id: "v11-host-actions-title", text: "Host actions" }),
+            actionButton({ label: "Cancel table…", variant: "danger", pending: pending === "cancel", disabled: !snapshot.online || busy || room.status !== "OPEN", onActivate: () => confirmAndRun("cancel", "cancelTable", "Cancel this table for every seated player? This cannot be undone.") })
+          )
         ] : room.status === "STARTED"
           ? actionButton({ label: "Join started match", variant: "primary", pending: enteringStartedMatch, disabled: busy, onActivate: () => enterStartedMatch() })
           : isConnecting
@@ -154,7 +261,7 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
           : null,
         actionButton({ label: "Refresh room", variant: "quiet", disabled: !snapshot.online || busy, pending: pending === "refresh", onActivate: () => run("refresh", "refresh") })
       )
-    );
+    ].filter(Boolean));
   };
   const run = async (name, method, args) => {
     if (pending || enteringStartedMatch) {
@@ -183,7 +290,7 @@ export function waitingRoomScreen({ navigate, router, onlineSession = createUnav
     if (["CONNECTING", "STARTED"].includes(snapshot.room?.table?.status) && onlineSession.getMatchBootstrap?.() && !enteringStartedMatch) void enterStartedMatch();
   }) ?? (() => {});
   render();
-  const shell = screenWithMenu({ id: "waiting-room", context: "Online play", title: "Waiting room", status: null, router, content: [content], menuContent: [actionButton({ label: "Refresh room", variant: "secondary", onActivate: () => run("refresh", "refresh") })] });
+  const shell = screenWithMenu({ id: "waiting-room", context: "Carriage assembly · Online play", title: "Waiting room", status: null, router, content: [content], menuContent: [actionButton({ label: "Refresh room", variant: "secondary", onActivate: () => run("refresh", "refresh") })] });
   const dispose = shell.disposeScreen;
   shell.disposeScreen = () => { unsubscribe(); dispose?.(); };
   return shell;

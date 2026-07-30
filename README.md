@@ -43,6 +43,25 @@ The GitHub-hosted online-beta source, credential boundary, emergency stop, and
 tester entry procedure are recorded in the
 [Phase 8 GitHub online-beta runbook](docs/phase-8/GITHUB_ONLINE_BETA.md).
 
+## Version 1.1 graphics overhaul
+
+The v1.1 graphics-overhaul [Stage 0 package is owner-approved](docs/v1.1/STAGE_0_SIGNOFF.md),
+and the authorised [Stage 1.1.1 concept package](docs/v1.1/stage-1.1.1/README.md)
+is built for direction review. The
+complete [v1.1 documentation index](docs/v1.1/README.md) defines the
+**Midnight Limited** art direction, binding push-the-boat-out execution
+directive, route and state specifications, zero-budget production/tool and
+licensing plan, beta-coordination boundary, implementation sequence, and
+visual-quality release gate.
+
+The owner has declared Stage 0 approved and the beta complete, approved
+**Compartment Table** as the Stage 1 direction, and authorised promotion of the
+beta application to version `1.0.0`. Production visual implementation remains
+gated by reconciliation against an exact immutable beta source/build revision;
+the local repository has no commit history from which that revision can
+currently be recorded. No v1.1 production-asset integration is claimed by the
+Stage 1 package.
+
 ## Development
 
 Crazy Rummy requires Node.js 22 or later and pnpm:

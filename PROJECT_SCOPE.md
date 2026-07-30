@@ -1,9 +1,54 @@
 # Crazy Rummy — Project Scope
 
-**Status:** Phase 0 approved; Phases 1–6 implementation complete  
+**Status:** Phase 0 approved; Phases 1–7 implementation complete  
 **Product name:** Crazy Rummy  
 **Rules variant:** Railway Rummy / moving-wild Crazy Rummy  
 **Primary experience:** Remote multiplayer on phones
+
+## Version 1.1 presentation-overhaul overlay
+
+**Status:** Stage 0 and Compartment Table direction owner-approved; beta
+application promoted to `1.0.0`; not production visual implementation
+authority before immutable-beta reconciliation.
+
+Version 1.1, **The Midnight Limited**, is a complete presentation-layer
+overhaul. It must make the game feel materially rebuilt through authored card
+design, route-specific composition, environmental identity, and directed game
+moments—not a palette refresh or a decorative reskin. Its binding creative
+contract is the [v1.1 creative execution directive](docs/v1.1/CREATIVE_EXECUTION_DIRECTIVE.md),
+read with the [v1.1 design bible](docs/v1.1/VISUAL_DESIGN_BIBLE.md),
+[screen and flow specification](docs/v1.1/SCREEN_AND_FLOW_SPEC.md), and
+[implementation plan](docs/v1.1/IMPLEMENTATION_PLAN.md).
+
+### Scope and authority
+
+- v1.1 may replace weak MVP presentation markup, component anatomy, visual
+  hierarchy, visual assets, motion choreography, and route composition where
+  necessary to deliver the approved visual direction.
+- The base product contracts remain authoritative for rules, scoring,
+  route/interaction semantics, accepted-event truth, network/recovery,
+  hidden-information, privacy, accessibility, PWA, and security boundaries.
+  v1.1 governs presentation ambition only; it cannot weaken those boundaries.
+- The overhaul remains genuinely zero-budget: no paid software, paid asset
+  licence, payment card, metered generation/runtime, third-party asset CDN, or
+  new recurring operating cost is permitted. Asset provenance and local
+  fallbacks are mandatory under the [zero-budget toolchain](docs/v1.1/ZERO_BUDGET_TOOLCHAIN.md).
+
+### Non-goals and readiness boundary
+
+v1.1 does not change game rules, scoring, routes, identity/account policy,
+online architecture, privacy model, or the meaning and timing of accepted
+actions. It is not permission to ship a partial mixture of legacy and v1.1
+production surfaces, nor to claim visual implementation, test, or approval
+evidence before it exists.
+
+The application is still under beta development. Before Stage 0 approval,
+v1.1 remains documentation-only. If Stage 0 is approved, Stage 1 may prepare
+concepts, provenance plans, signature-moment coverage, keyframes, and
+reconciliation records. Production implementation still waits for the project
+owner to sign the beta complete, reconciliation against that exact revision,
+and owner-approved Stage 1 keyframes; no planning record may treat changing
+beta UI/state contracts as frozen.
 
 ## Product summary
 

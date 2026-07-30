@@ -39,7 +39,7 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
   let pending = null;
   let message = null;
   let activePanel = null;
-  const content = element("div", { className: "online-workspace" });
+  const content = element("div", { className: "online-workspace v11-lobby" });
 
   const togglePanel = (name) => {
     activePanel = activePanel === name ? null : name;
@@ -51,7 +51,22 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
     const online = Boolean(snapshot.online);
     const busy = Boolean(pending);
     const tables = Array.isArray(snapshot.tables) ? snapshot.tables.map(tableSummary) : [];
-    const items = [connectionFor(snapshot)];
+    const signal = connectionFor(snapshot);
+    signal.classList.add("v11-lobby-signal");
+    const items = [
+      element(
+        "section",
+        { className: "v11-lobby-threshold", "aria-label": "Lobby arrival and connection" },
+        element(
+          "div",
+          { className: "v11-lobby-threshold__board", "aria-hidden": "true" },
+          element("span", { text: "NOW BOARDING" }),
+          element("strong", { text: "CRAZY RUMMY" }),
+          element("small", { text: "Route 13 · Moving wilds" })
+        ),
+        signal
+      )
+    ];
     const incompatibleOpenTableCount = Number(snapshot.discovery?.incompatibleOpenTableCount ?? 0);
     if (incompatibleOpenTableCount > 0) {
       items.push(element("aside", { className: "lobby-version-warning", role: "status" },
@@ -83,7 +98,7 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
       });
       joinButton.setAttribute("aria-expanded", String(activePanel === "join"));
       joinButton.setAttribute("aria-controls", "join-code-panel");
-      items.push(element("section", { className: "lobby-start", "aria-label": "Start or join a table" },
+      items.push(element("section", { className: "lobby-start v11-lobby-gates", "aria-label": "Start or join a table" },
         element("h2", { text: "Start or join a table" }),
         copy("Create a new room, or use an invite code for a closed table."),
         element("div", { className: "lobby-start__actions" }, createButton, joinButton)
@@ -94,20 +109,31 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
 
     if (online && activePanel === "create") {
       const capacity = element("select", { id: "table-capacity", name: "capacity" }, [2, 3, 4, 5, 6].map((count) => element("option", { value: count, text: `${count} seats` })));
-      const form = element("form", { onSubmit: (event) => {
+      const review = element("output", {
+        className: "v11-create-review",
+        "aria-live": "polite"
+      });
+      let form;
+      const updateReview = () => {
+        const visibility = form?.elements.namedItem("table-visibility")?.value ?? "OPEN";
+        review.textContent = `${visibility === "OPEN" ? "Open" : "Closed"} · ${capacity.value} seats · Crazy Rummy · 13 hands.`;
+      };
+      form = element("form", { onSubmit: (event) => {
         event.preventDefault();
         const visibility = form.elements.namedItem("table-visibility")?.value ?? "OPEN";
         run("create", "createTable", { visibility, capacity: Number(capacity.value) });
-      } },
+      }, onChange: updateReview },
       element("label", { htmlFor: "table-capacity", text: "Seats (2–6)" }), capacity,
       element("fieldset", { className: "online-choice" }, element("legend", { text: "Audience" }),
         visibilityChoice("OPEN", "Open table", "Publicly listed and joinable while a seat is available."),
         visibilityChoice("CLOSED", "Closed table", "Never listed publicly; players need a join code or link.")),
       copy("Rules: Crazy Rummy · 13 hands. Only this confirmed rules preset is available."),
       routeLink("View rules for this table", "/rules", "quiet"),
+      review,
       actionButton({ label: "Create table", type: "submit", disabled: busy, pending: pending === "create" }),
       actionButton({ label: "Cancel", variant: "quiet", disabled: busy, onActivate: () => togglePanel("create") })
       );
+      updateReview();
       items.push(setupPanel({ id: "create-table-panel", title: "Create a match", content: [form] }));
     }
     if (online && activePanel === "join") {
@@ -125,9 +151,15 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
 
     const tableCards = tables.map((table) => {
       const joinRequest = `join:${table.id}`;
-      return element("article", { className: "table-card", dataset: { tableId: table.id } },
+      return element("article", { className: "table-card v11-departure-ticket", dataset: { tableId: table.id } },
+        element(
+          "div",
+          { className: "v11-departure-ticket__station", "aria-hidden": "true" },
+          element("span", { text: `${table.occupied}` }),
+          element("small", { text: `/ ${table.capacity || "?"}` })
+        ),
         element("h3", { text: `${table.name} · ${table.occupied}/${table.capacity || "?"}` }),
-        copy(`Hosted by ${table.host} · ${table.state.toLowerCase()} · ${table.rules}`),
+        copy(`Hosted by ${table.host} · ${table.state.toLowerCase()} · ${table.rules}`, "screen-copy v11-departure-ticket__meta"),
         actionButton({
           label: "Join table",
           disabled: !online || busy,
@@ -136,7 +168,24 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
         })
       );
     });
-    items.push(panel("Open tables", copy(`${tables.length} open · ${freshnessCopy(snapshot)}`), tableCards.length ? tableCards : copy("No open tables found right now. Create one or refresh.")));
+    const boardState = snapshot?.presence?.status === "updating" && !tableCards.length
+      ? element(
+          "div",
+          { className: "v11-departures-empty v11-departures-empty--loading", role: "status" },
+          element("span", { className: "v11-departures-empty__ticket", "aria-hidden": "true" }),
+          copy("Updating… looking for open tables.")
+        )
+      : tableCards.length
+        ? element("div", { className: "v11-departures-list" }, tableCards)
+        : element(
+            "div",
+            { className: "v11-departures-empty", role: "status" },
+            element("span", { className: "v11-departures-empty__ticket", "aria-hidden": "true" }),
+            copy("No open tables found right now. Create one or refresh.")
+          );
+    const departures = panel("Open tables", copy(`${tables.length} open · ${freshnessCopy(snapshot)}`), boardState);
+    departures.classList.add("v11-departures-board");
+    items.push(departures);
     if (online) {
       items.push(element("div", { className: "lobby-utilities" },
         actionButton({ label: "Refresh now", variant: "quiet", disabled: busy, pending: pending === "refresh", onActivate: () => run("refresh", "refresh") }),
@@ -161,7 +210,7 @@ export function lobbyScreen({ navigate, router, onlineSession = createUnavailabl
   };
   const unsubscribe = onlineSession.subscribe?.((next) => { snapshot = next ?? snapshot; rerender(); }) ?? (() => {});
   rerender();
-  const shell = screenWithMenu({ id: "lobby", context: "Online play", title: "Lobby", status: null, router, content: [content], menuContent: [actionButton({ label: "Refresh lobby", variant: "secondary", onActivate: () => run("refresh", "refresh") })] });
+  const shell = screenWithMenu({ id: "lobby", context: "Midnight departures · Online play", title: "Lobby", status: null, router, content: [content], menuContent: [actionButton({ label: "Refresh lobby", variant: "secondary", onActivate: () => run("refresh", "refresh") })] });
   const dispose = shell.disposeScreen;
   shell.disposeScreen = () => { unsubscribe(); dispose?.(); };
   return shell;

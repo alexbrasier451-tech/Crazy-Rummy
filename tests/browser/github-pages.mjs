@@ -118,7 +118,7 @@ try {
   assert.deepEqual(failedResponses, []);
 
   const rootAsset = await page.request.get(
-    `${testServer.origin}/art/card-back-lattice.v1.svg`
+    `${testServer.origin}/assets/cards/card-back-midnight-lattice.v1.svg`
   );
   assert.equal(rootAsset.status(), 404);
 
@@ -133,7 +133,7 @@ try {
       ok: response.ok,
       hasSvg: (await response.text()).includes("<svg")
     };
-  }, `${basePath}art/card-back-lattice.v1.svg`);
+  }, `${basePath}assets/cards/card-back-midnight-lattice.v1.svg`);
   assert.deepEqual(offlineArt, { ok: true, hasSvg: true });
 } finally {
   await context?.setOffline(false).catch(() => {});

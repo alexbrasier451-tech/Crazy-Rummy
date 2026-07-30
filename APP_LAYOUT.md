@@ -1,5 +1,46 @@
 # Crazy Rummy — Phone-first app layout
 
+## Version 1.1 visual-spec overlay
+
+**Status:** Stage 0 and Compartment Table direction owner-approved; beta
+application promoted to `1.0.0`; not approval for production visual
+implementation before immutable-beta reconciliation.
+
+This base layout remains authoritative for the product's routes, information
+boundaries, interaction semantics, and accessibility requirements. Version 1.1
+changes the presentation ambition governing those same experiences. The v1.1
+[visual design bible](docs/v1.1/VISUAL_DESIGN_BIBLE.md),
+[screen and flow specification](docs/v1.1/SCREEN_AND_FLOW_SPEC.md), and binding
+[creative execution directive](docs/v1.1/CREATIVE_EXECUTION_DIRECTIVE.md)
+govern visual direction, composition, cards, materials, assets, and motion;
+the directive controls if a visual reading could otherwise be conservative.
+
+### v1.1 presentation authority
+
+- Weak MVP presentation structures may be replaced: existing boxes, panel
+  anatomy, dashboard layouts, card arrangements, responsive staging, ornament,
+  and choreography are not protected merely because they already exist.
+- Preserve every existing route and its semantic contract, including game-state
+  truth, accepted-action timing, private-hand boundaries, touch/keyboard/
+  screen-reader equivalence, reduced motion, forced colours, and recovery
+  behaviour. Presentation may never mask, weaken, or contradict them.
+- Each major route requires a route-specific visual idea and the complete game
+  flow requires deliberately directed signature moments. Do not force lobby,
+  gameplay, scoring, rules, recovery, and results into one interchangeable
+  dashboard silhouette.
+- Cards are the authored hero system: their faces, backs, states, mobile fan,
+  public use, movement, and non-pointer/reduced-motion behaviour must form one
+  coherent system rather than decorated browser-default rectangles.
+
+Before Stage 0 approval, this overlay is documentation authority only. On
+approval, it authorises Stage 1 concept, coverage, and keyframe work. Production
+implementation still waits for the project owner's beta-complete sign-off,
+reconciliation against that exact revision, and owner-approved Stage 1
+keyframes; no v1.1 visual implementation or verification is claimed. The
+[v1.1 implementation plan](docs/v1.1/IMPLEMENTATION_PLAN.md) and
+[QA acceptance plan](docs/v1.1/QA_ACCEPTANCE.md) define the subsequent delivery
+and evidence gates.
+
 ## Purpose and product boundary
 
 Crazy Rummy is a remote multiplayer, installable PWA for a 13-hand game of

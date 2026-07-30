@@ -19,8 +19,12 @@ const root = path.resolve(import.meta.dirname, "../..");
 const ART_URLS = [
   "/art/baize-texture.v1.svg",
   "/art/card-back-lattice.v1.svg",
-  "/art/crazy-rummy-splash.v1.png",
-  "/art/route-tickets.v1.svg"
+  "/art/route-tickets.v1.svg",
+  "/assets/brand/crazy-rummy-wordmark.v1.svg",
+  "/assets/cards/card-back-midnight-lattice.v1.svg",
+  "/assets/cards/wild-route-seal.v1.svg",
+  "/assets/materials/baize-fibre.v1.svg",
+  "/assets/ui/route-terminus.v1.svg"
 ];
 
 async function buildProductionApp(outDirectory, revision) {
@@ -77,7 +81,7 @@ function validatePrecacheManifest(precacheManifest) {
   assert.deepEqual(
     precacheManifest.assets
       .map(({ url }) => url)
-      .filter((url) => url.startsWith("/art/")),
+      .filter((url) => ART_URLS.includes(url)),
     ART_URLS
   );
 }
@@ -264,15 +268,15 @@ try {
     return {
       ok: response.ok,
       contentType: response.headers.get("content-type"),
-      hasRailLatticeTitle: (await response.text()).includes(
-        "Crazy Rummy rail-lattice card back"
+      hasMidnightLatticeTitle: (await response.text()).includes(
+        "Midnight Limited card back"
       )
     };
-  }, "/art/card-back-lattice.v1.svg");
+  }, "/assets/cards/card-back-midnight-lattice.v1.svg");
   assert.deepEqual(offlineCardBackV2, {
     ok: true,
     contentType: "image/svg+xml",
-    hasRailLatticeTitle: true
+    hasMidnightLatticeTitle: true
   });
 
   console.log(

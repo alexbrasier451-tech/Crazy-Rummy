@@ -1,0 +1,810 @@
+/* v1.1 Stage 1.1.3 — route-specific pre-game compositions.
+ * Imported by the integration controller after the shared screen layer.
+ */
+
+.v11-arrival-route {
+  position: relative;
+  display: grid;
+  width: min(100%, 38rem);
+  min-height: 2.5rem;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  align-items: center;
+  padding-inline: 0.35rem;
+}
+
+.v11-arrival-route__rail {
+  position: absolute;
+  inset-inline: 0.55rem;
+  height: 0.3rem;
+  border-block: 1px solid var(--color-soft-divider);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: v11-route-resolve 520ms 180ms var(--ease-out) forwards;
+}
+
+.v11-arrival-route__station {
+  z-index: 1;
+  width: 0.55rem;
+  aspect-ratio: 1;
+  justify-self: center;
+  border: 1px solid var(--color-muted-cream);
+  border-radius: 50%;
+  background: var(--color-page-depth);
+}
+
+.v11-arrival-route__station:first-of-type {
+  border-color: var(--color-brass-highlight);
+  background: var(--color-ticket-gold);
+  box-shadow: 0 0 1.4rem rgb(226 181 66 / 0.55);
+  animation: v11-station-arrival 620ms var(--ease-out) both;
+}
+
+.v11-arrival-status {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--color-muted-cream);
+}
+
+.v11-arrival-status__lamp {
+  width: 0.65rem;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-brass-highlight);
+  border-radius: 50%;
+  background: var(--color-ticket-gold);
+}
+
+.v11-arrival-card {
+  clip-path: polygon(0 0, calc(100% - 1.15rem) 0, 100% 1.15rem, 100% 100%, 1.15rem 100%, 0 calc(100% - 1.15rem));
+}
+
+.v11-arrival-card .splash-card__art {
+  height: clamp(18rem, 48dvh, 30rem);
+  padding: clamp(3.5rem, 14vw, 7rem) clamp(2rem, 10vw, 5rem);
+  background:
+    radial-gradient(circle at 50% 42%, rgb(226 181 66 / 0.12), transparent 38%),
+    linear-gradient(180deg, var(--color-deep-panel), var(--color-page-depth));
+  object-fit: contain;
+}
+
+.v11-arrival-card__plaque {
+  position: absolute;
+  z-index: 3;
+  inset: auto auto 0.9rem 0.9rem;
+  display: grid;
+  width: 3.6rem;
+  aspect-ratio: 1;
+  place-content: center;
+  border: 1px solid rgb(242 210 122 / 0.65);
+  background: rgb(11 13 14 / 0.88);
+  color: var(--color-brass-highlight);
+  line-height: 1;
+  text-align: center;
+}
+
+.v11-arrival-card__plaque span {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.v11-arrival-card__plaque small {
+  margin-block-start: 0.25rem;
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+}
+
+.v11-arrival-actions {
+  width: min(100%, 38rem);
+  border-block-start: 1px solid var(--color-soft-divider);
+  padding-block-start: var(--space-3);
+}
+
+.v11-identity-intro {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.v11-identity-intro__punch {
+  width: 1.75rem;
+  aspect-ratio: 1;
+  border: 0.3rem double var(--color-ticket-gold);
+  border-radius: 50%;
+  box-shadow: 0 0 0 0.3rem rgb(226 181 66 / 0.1);
+}
+
+.v11-identity-intro p {
+  margin: 0;
+}
+
+.v11-identity-ticket {
+  position: relative;
+  overflow: hidden;
+  border-color: rgb(226 181 66 / 0.62);
+  border-radius: 0.45rem;
+  background:
+    radial-gradient(circle at 0 50%, var(--color-page-depth) 0 0.55rem, transparent 0.6rem),
+    radial-gradient(circle at 100% 50%, var(--color-page-depth) 0 0.55rem, transparent 0.6rem),
+    linear-gradient(100deg, rgb(226 181 66 / 0.12), transparent 34%),
+    var(--color-deep-panel);
+  box-shadow: var(--shadow-decision);
+}
+
+.v11-identity-ticket::after {
+  position: absolute;
+  inset: 0.55rem;
+  border: 1px dashed rgb(226 181 66 / 0.26);
+  content: "";
+  pointer-events: none;
+}
+
+.v11-identity-ticket > * {
+  position: relative;
+  z-index: 1;
+}
+
+.v11-identity-ticket__header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-block-end: 1px dashed var(--color-strong-edge);
+  padding-block-end: var(--space-3);
+  color: var(--color-brass-highlight);
+  font-size: var(--text-xs);
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.v11-identity-ticket__validation {
+  min-height: 1.5em;
+  color: var(--color-muted-cream);
+  font-size: var(--text-sm);
+}
+
+.v11-identity-ticket__privacy {
+  margin: 0;
+  color: var(--color-muted-cream);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.v11-marker-picker {
+  grid-template-columns: repeat(4, minmax(4.25rem, 1fr));
+  overflow-x: auto;
+  padding-block-end: var(--space-2);
+  scroll-snap-type: x proximity;
+}
+
+.v11-marker-option {
+  position: relative;
+  min-width: 4.25rem;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  scroll-snap-align: start;
+}
+
+.v11-marker-option__label {
+  overflow-wrap: anywhere;
+  font-size: var(--text-xs);
+  font-weight: 800;
+}
+
+.v11-marker-option__check {
+  position: absolute;
+  inset: 0.25rem 0.25rem auto auto;
+  opacity: 0;
+  font-weight: 950;
+}
+
+.v11-marker-option:has(input:checked) {
+  outline: 0.2rem solid var(--color-ticket-gold);
+  outline-offset: -0.2rem;
+}
+
+.v11-marker-option:has(input:checked) .v11-marker-option__check {
+  opacity: 1;
+}
+
+.v11-lobby-threshold {
+  position: relative;
+  display: grid;
+  gap: var(--space-3);
+  overflow: hidden;
+  border-block: 1px solid var(--color-strong-edge);
+  padding: var(--space-4);
+  background:
+    linear-gradient(90deg, rgb(226 181 66 / 0.08), transparent 58%),
+    var(--color-deep-panel);
+}
+
+.v11-lobby-threshold::after {
+  position: absolute;
+  inset: 0 12% auto 58%;
+  height: 100%;
+  background: linear-gradient(105deg, transparent, rgb(255 255 255 / 0.07), transparent);
+  content: "";
+  pointer-events: none;
+  transform: translateX(-160%);
+  animation: v11-platform-light 850ms 120ms var(--ease-out) both;
+}
+
+.v11-lobby-threshold__board {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 0.35rem var(--space-3);
+  align-items: start;
+}
+
+.v11-lobby-threshold__board span {
+  grid-row: 1 / span 2;
+  color: var(--color-ticket-gold);
+  font-size: var(--text-xs);
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  writing-mode: vertical-rl;
+}
+
+.v11-lobby-threshold__board strong {
+  grid-column: 2;
+  grid-row: 1;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: clamp(1.65rem, 7vw, 3.5rem);
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v11-lobby-threshold__board small {
+  grid-column: 2;
+  grid-row: 2;
+  color: var(--color-muted-cream);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.v11-lobby-signal {
+  border-inline-start-width: 0.35rem;
+}
+
+.v11-lobby-gates {
+  clip-path: polygon(0 0, calc(100% - 1rem) 0, 100% 1rem, 100% 100%, 0 100%);
+}
+
+.v11-create-review {
+  display: block;
+  border: 1px dashed var(--color-ticket-gold);
+  padding: var(--space-3);
+  background: var(--color-page-depth);
+  color: var(--color-brass-highlight);
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.v11-departures-board {
+  overflow: hidden;
+  border-radius: 0;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 3.2rem, rgb(255 255 255 / 0.025) 3.2rem 3.25rem),
+    var(--color-deep-panel);
+}
+
+.v11-departures-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.v11-departure-ticket {
+  position: relative;
+  grid-template-columns: auto minmax(0, 1fr);
+  border: 1px solid rgb(198 189 170 / 0.58);
+  border-inline-start: 0;
+  padding: var(--space-3);
+  background:
+    linear-gradient(95deg, rgb(245 239 223 / 0.13), transparent 62%),
+    var(--color-raised);
+  clip-path: polygon(0.7rem 0, 100% 0, 100% calc(100% - 0.7rem), calc(100% - 0.7rem) 100%, 0.7rem 100%, 0 50%);
+  animation: v11-ticket-settle 260ms var(--ease-out) both;
+}
+
+.v11-departure-ticket:nth-child(2) {
+  margin-inline-start: var(--space-3);
+  animation-delay: 60ms;
+}
+
+.v11-departure-ticket:nth-child(3) {
+  margin-inline-start: var(--space-5);
+  animation-delay: 120ms;
+}
+
+.v11-departure-ticket__station {
+  display: grid;
+  width: 3.25rem;
+  aspect-ratio: 1;
+  grid-row: 1 / span 2;
+  place-content: center;
+  align-self: center;
+  border: 0.2rem double var(--color-ticket-gold);
+  border-radius: 50%;
+  color: var(--color-brass-highlight);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
+}
+
+.v11-departure-ticket__station span {
+  font-size: var(--text-lg);
+  font-weight: 950;
+}
+
+.v11-departure-ticket__station small {
+  font-size: 0.65rem;
+}
+
+.v11-departure-ticket h3,
+.v11-departure-ticket__meta {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.v11-departure-ticket h3 {
+  white-space: nowrap;
+}
+
+.v11-departure-ticket > .action {
+  grid-column: 1 / -1;
+}
+
+.v11-departures-empty {
+  display: grid;
+  min-height: 10rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-4);
+}
+
+.v11-departures-empty__ticket {
+  width: clamp(4.5rem, 20vw, 7rem);
+  aspect-ratio: 1.6;
+  border: 1px dashed var(--color-muted-cream);
+  background:
+    radial-gradient(circle at 0 50%, var(--color-deep-panel) 0 0.45rem, transparent 0.5rem),
+    radial-gradient(circle at 100% 50%, var(--color-deep-panel) 0 0.45rem, transparent 0.5rem),
+    rgb(245 239 223 / 0.08);
+  transform: rotate(-5deg);
+}
+
+.v11-departures-empty--loading .v11-departures-empty__ticket {
+  background:
+    linear-gradient(105deg, transparent 30%, rgb(245 239 223 / 0.18), transparent 70%),
+    rgb(245 239 223 / 0.07);
+  background-size: 220% 100%;
+  animation: v11-ticket-loading 900ms ease-in-out infinite;
+}
+
+.v11-room-ticket {
+  position: relative;
+  display: grid;
+  gap: var(--space-2);
+  overflow: hidden;
+  border: 1px solid rgb(226 181 66 / 0.58);
+  padding: var(--space-4);
+  background:
+    radial-gradient(circle at 0 50%, var(--color-page-depth) 0 0.55rem, transparent 0.6rem),
+    radial-gradient(circle at 100% 50%, var(--color-page-depth) 0 0.55rem, transparent 0.6rem),
+    linear-gradient(105deg, rgb(226 181 66 / 0.11), transparent 46%),
+    var(--color-deep-panel);
+}
+
+.v11-room-ticket__eyebrow,
+.v11-room-ticket__meta,
+.v11-room-ticket h2 {
+  max-width: calc(100% - 5.5rem);
+  margin: 0;
+}
+
+.v11-room-ticket__eyebrow {
+  color: var(--color-ticket-gold);
+  font-size: var(--text-xs);
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.v11-room-ticket h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.55rem, 6vw, 2.8rem);
+  line-height: 1;
+}
+
+.v11-room-ticket__stamp {
+  position: absolute;
+  inset: var(--space-3) var(--space-3) auto auto;
+  display: grid;
+  width: 4.5rem;
+  aspect-ratio: 1;
+  place-content: center;
+  border: 0.22rem double var(--color-ticket-gold);
+  border-radius: 50%;
+  color: var(--color-brass-highlight);
+  text-align: center;
+  transform: rotate(5deg);
+}
+
+.v11-room-ticket__stamp span {
+  font-size: 0.65rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+}
+
+.v11-room-ticket__stamp small {
+  font-variant-numeric: tabular-nums;
+}
+
+.v11-room-ticket .screen-panel {
+  border-inline: 0;
+  border-block-end: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+}
+
+.v11-seating-plan {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.v11-seating-plan > h2 {
+  margin: 0;
+  color: var(--color-brass-highlight);
+  font-size: var(--text-sm);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.v11-seating-plan__field {
+  position: relative;
+  isolation: isolate;
+  min-height: 24rem;
+  overflow: hidden;
+  border: 1px solid var(--color-strong-edge);
+  border-radius: 44% / 18%;
+  padding: var(--space-4);
+  background:
+    radial-gradient(ellipse at center, rgb(56 194 134 / 0.1), transparent 50%),
+    repeating-linear-gradient(96deg, transparent 0 0.28rem, rgb(255 255 255 / 0.012) 0.3rem),
+    var(--color-baize);
+  box-shadow:
+    inset 0 0 0 0.4rem rgb(11 13 14 / 0.36),
+    inset 0 0 3rem rgb(0 0 0 / 0.55);
+}
+
+.v11-seating-plan__oval {
+  position: absolute;
+  z-index: -1;
+  inset: 34% 23%;
+  display: grid;
+  place-content: center;
+  border: 1px dashed rgb(226 181 66 / 0.42);
+  border-radius: 50%;
+  color: var(--color-muted-cream);
+  font-size: var(--text-xs);
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.v11-seating-plan__oval span {
+  color: var(--color-brass-highlight);
+  font-weight: 950;
+}
+
+.v11-seating-plan .seat-grid {
+  min-height: 21.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: space-between;
+}
+
+.v11-seat-plaque {
+  position: relative;
+  min-height: 6.25rem;
+  border-radius: 0.4rem;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.07), transparent 42%),
+    var(--color-deep-panel);
+  box-shadow: 0 0.6rem 1.2rem rgb(0 0 0 / 0.32);
+}
+
+.v11-seat-plaque[data-ready="true"] {
+  border-color: var(--color-bright-green);
+}
+
+.v11-seat-plaque[data-ready="true"]::after {
+  position: absolute;
+  inset: 0.25rem;
+  border: 1px dashed var(--color-bright-green);
+  content: "";
+  pointer-events: none;
+}
+
+.v11-seat-plaque__accepted {
+  grid-column: 2;
+  color: var(--color-muted-cream);
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.v11-seat-plaque__you {
+  position: absolute;
+  inset: -0.65rem var(--space-2) auto auto;
+  border: 1px solid var(--color-ticket-gold);
+  padding: 0.05rem 0.4rem;
+  background: var(--color-page-depth);
+  color: var(--color-brass-highlight);
+  font-size: 0.65rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.v11-seat-plaque--open {
+  border-style: dashed;
+  opacity: 0.78;
+  box-shadow: none;
+}
+
+.v11-departure-line {
+  display: grid;
+  grid-template-columns: auto minmax(2rem, 1fr) auto;
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--color-muted-cream);
+  font-size: var(--text-xs);
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.v11-departure-line i {
+  height: 0.3rem;
+  border-block: 1px solid var(--color-strong-edge);
+}
+
+.v11-seating-plan--departure-ready .v11-seat-plaque[data-ready="true"] {
+  animation: v11-seat-ready 480ms var(--ease-out) both;
+}
+
+.v11-seating-plan--departure-ready .v11-departure-line i {
+  border-color: var(--color-ticket-gold);
+  background: linear-gradient(90deg, transparent, var(--color-ticket-gold));
+}
+
+.v11-departure-checks {
+  border-inline-start: 0.35rem solid var(--color-ticket-gold);
+}
+
+.v11-start-blocker {
+  margin: 0;
+  color: var(--color-muted-cream);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.v11-host-actions {
+  display: grid;
+  gap: var(--space-2);
+  border-block-start: 1px dashed var(--color-strong-edge);
+  padding-block-start: var(--space-3);
+}
+
+.v11-host-actions h3 {
+  margin: 0;
+  color: var(--color-muted-cream);
+  font-size: var(--text-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.v11-waiting-empty {
+  display: grid;
+  min-height: 28rem;
+  place-content: center;
+  gap: var(--space-3);
+  border: 1px dashed var(--color-strong-edge);
+  padding: var(--space-5);
+  background:
+    radial-gradient(ellipse at center, rgb(28 42 35 / 0.9), transparent 68%),
+    var(--color-page-depth);
+  text-align: center;
+}
+
+.v11-waiting-empty__seat {
+  width: 5rem;
+  aspect-ratio: 1;
+  place-self: center;
+  border: 0.25rem double var(--color-muted-cream);
+  border-radius: 50%;
+  color: var(--color-muted-cream);
+  font-family: var(--font-display);
+  font-size: 2rem;
+  line-height: 4.5rem;
+}
+
+.v11-waiting-empty h2,
+.v11-waiting-empty p {
+  margin: 0;
+}
+
+@keyframes v11-route-resolve {
+  to { transform: scaleX(1); }
+}
+
+@keyframes v11-station-arrival {
+  from { opacity: 0; transform: scale(0.4); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes v11-platform-light {
+  to { transform: translateX(180%); }
+}
+
+@keyframes v11-ticket-settle {
+  from { opacity: 0; transform: translateX(1rem); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes v11-ticket-loading {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@keyframes v11-seat-ready {
+  0% { box-shadow: 0 0 0 rgb(226 181 66 / 0); }
+  55% { box-shadow: 0 0 0 0.3rem rgb(226 181 66 / 0.42); }
+  100% { box-shadow: 0 0 0 0.08rem rgb(226 181 66 / 0.3); }
+}
+
+@media (min-width: 30rem) {
+  .v11-departure-ticket {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .v11-departure-ticket > .action {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    width: auto;
+  }
+
+  .v11-seating-plan .seat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .v11-seating-plan .v11-seat-plaque:nth-child(4) {
+    grid-column: 3;
+  }
+
+  .v11-seating-plan .v11-seat-plaque:nth-child(5) {
+    grid-column: 2;
+  }
+
+  .v11-seating-plan .v11-seat-plaque:nth-child(6) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 24rem) {
+  .v11-room-ticket__eyebrow,
+  .v11-room-ticket__meta,
+  .v11-room-ticket h2 {
+    max-width: calc(100% - 4.3rem);
+  }
+
+  .v11-room-ticket__stamp {
+    width: 3.6rem;
+  }
+
+  .v11-seating-plan__field {
+    min-height: 0;
+    border-radius: var(--radius-lg);
+  }
+
+  .v11-seating-plan__oval {
+    position: static;
+    z-index: auto;
+    min-height: 5.5rem;
+    margin-block-end: var(--space-3);
+  }
+
+  .v11-seating-plan .seat-grid {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v11-arrival-route__rail {
+    transform: scaleX(1);
+  }
+
+  .v11-arrival-route__rail,
+  .v11-arrival-route__station:first-of-type,
+  .v11-lobby-threshold::after,
+  .v11-departure-ticket,
+  .v11-departures-empty--loading .v11-departures-empty__ticket,
+  .v11-seating-plan--departure-ready .v11-seat-plaque[data-ready="true"] {
+    animation: none;
+    transform: none;
+  }
+
+  .v11-lobby-threshold::after {
+    display: none;
+  }
+}
+
+html[data-motion="reduced"] .v11-arrival-route__rail {
+  transform: scaleX(1);
+}
+
+html[data-motion="reduced"] .v11-arrival-route__rail,
+html[data-motion="reduced"] .v11-arrival-route__station:first-of-type,
+html[data-motion="reduced"] .v11-lobby-threshold::after,
+html[data-motion="reduced"] .v11-departure-ticket,
+html[data-motion="reduced"] .v11-departures-empty--loading .v11-departures-empty__ticket,
+html[data-motion="reduced"] .v11-seating-plan--departure-ready .v11-seat-plaque[data-ready="true"] {
+  animation: none;
+}
+
+@media (forced-colors: active) {
+  .v11-arrival-route__station,
+  .v11-arrival-status__lamp,
+  .v11-identity-ticket,
+  .v11-identity-intro__punch,
+  .v11-lobby-threshold,
+  .v11-lobby-gates,
+  .v11-create-review,
+  .v11-departures-board,
+  .v11-departure-ticket,
+  .v11-departure-ticket__station,
+  .v11-departures-empty__ticket,
+  .v11-room-ticket,
+  .v11-room-ticket__stamp,
+  .v11-seating-plan__field,
+  .v11-seating-plan__oval,
+  .v11-seat-plaque,
+  .v11-waiting-empty,
+  .v11-waiting-empty__seat {
+    border: 2px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+    clip-path: none;
+    forced-color-adjust: auto;
+  }
+
+  .v11-marker-option:has(input:checked),
+  .v11-seat-plaque[data-ready="true"] {
+    outline: 3px solid Highlight;
+  }
+
+  .v11-seat-plaque[data-ready="true"]::after {
+    border: 2px dashed Highlight;
+  }
+
+  .v11-departure-line i,
+  .v11-arrival-route__rail {
+    border-color: CanvasText;
+    background: CanvasText;
+  }
+}

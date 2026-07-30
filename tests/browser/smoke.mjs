@@ -122,12 +122,13 @@ try {
   await page.goto(`${testServer.origin}/#/`, { waitUntil: "domcontentloaded" });
   await assertTapTargets(page, "Startup");
   const splashArt = page.getByRole("img", {
-    name: "Dogs and cats playing cards together in a moonlit railway carriage."
+    name: "Crazy Rummy route-node wordmark for The Midnight Limited."
   });
   await splashArt.waitFor();
   await page.waitForFunction(() =>
     document.querySelector(".splash-card__art")?.naturalWidth > 0
   );
+  assert.equal(await page.locator(".v11-arrival-route__station").count(), 13);
   assert.equal(await page.getByText("Crazy Rummy", { exact: true }).count() >= 1, true);
   await page.getByText("A game by Alex Brasier", { exact: true }).waitFor();
   await page.getByText("13 hands · 2–6 players · one wild ride", { exact: true }).waitFor();

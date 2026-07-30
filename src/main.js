@@ -3,6 +3,7 @@ import "./styles/index.css";
 import { connectionState } from "./components/index.js";
 import { createRouter } from "./app/router.js";
 import { applyPreferencesToRoot, normalizePreferences } from "./app/preferences.js";
+import { applyPresentationQuality } from "./app/quality.js";
 import {
   connectOnlineMatch,
   isRecoverableOnlineMatchSnapshot,
@@ -32,6 +33,7 @@ if (!appRoot) {
 const localSession = createLocalGameSession();
 let appliedPreferences = normalizePreferences(localSession.getSnapshot().preferences);
 applyPreferencesToRoot(appliedPreferences);
+applyPresentationQuality();
 let onlineSession;
 let onlineIdentityKey;
 let onlineMatchSession = null;
