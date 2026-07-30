@@ -156,6 +156,49 @@ button.playing-card {
   transform: translateY(-0.35rem);
 }
 
+.playing-card--recent {
+  border-color: var(--color-bright-green);
+  box-shadow:
+    0 0 0 0.15rem var(--color-page-depth),
+    0 0 0 0.34rem var(--color-bright-green),
+    0 0.55rem 0.9rem rgb(0 0 0 / 0.4);
+  animation: recently-drawn-pulse 900ms var(--ease-out) 2;
+}
+
+.playing-card--recent[aria-pressed="true"],
+.playing-card--recent[data-selected="true"] {
+  border-color: var(--color-ticket-gold);
+  box-shadow:
+    0 0 0 0.15rem var(--color-bright-green),
+    0 0 0 0.36rem var(--color-ticket-gold),
+    0 0.55rem 0.9rem rgb(0 0 0 / 0.4);
+}
+
+.playing-card__recent {
+  position: absolute;
+  inset: 0.25rem auto auto 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-bright-green);
+  border-radius: var(--radius-pill);
+  padding: 0.08rem 0.26rem;
+  background: var(--color-rail-green);
+  color: var(--color-cream);
+  font-size: clamp(0.48rem, 2.1vw, 0.62rem);
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+}
+
+@keyframes recently-drawn-pulse {
+  50% {
+    box-shadow:
+      0 0 0 0.15rem var(--color-page-depth),
+      0 0 0 0.48rem var(--color-bright-green),
+      0 0.65rem 1rem rgb(0 0 0 / 0.46);
+  }
+}
+
 .playing-card__corner {
   grid-area: corner;
   display: grid;
@@ -706,6 +749,10 @@ button.playing-card {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .playing-card--recent {
+    animation: none;
+  }
+
   .playing-card[aria-pressed="true"],
   .playing-card[data-selected="true"] {
     transform: none;
@@ -719,6 +766,10 @@ button.playing-card {
 html[data-motion="reduced"] .playing-card[aria-pressed="true"],
 html[data-motion="reduced"] .playing-card[data-selected="true"] {
   transform: none;
+}
+
+html[data-motion="reduced"] .playing-card--recent {
+  animation: none;
 }
 
 @media (forced-colors: active) {
@@ -735,6 +786,7 @@ html[data-motion="reduced"] .playing-card[data-selected="true"] {
 
   .playing-card[aria-pressed="true"],
   .playing-card[data-selected="true"],
+  .playing-card--recent,
   .route-line__station[data-state="current"] {
     outline: 0.2rem solid Highlight;
     outline-offset: 0.15rem;

@@ -348,8 +348,20 @@ try {
   assert.equal(await automaticDrawMenu.count(), 0,
     "an unrelated same-turn render must not reopen a dismissed automatic draw menu");
   await control(page, "toggle-hand-tools").click();
+  const cardsBeforeDraw = await page.locator("[data-private-hand] [data-card-id]")
+    .evaluateAll((nodes) => nodes.map((node) => node.dataset.cardId));
   await expectOneAcceptedRevision(page, () => takeAction(page, "draw-stock"), "first stock draw");
   assert.equal(await phase(page), "TABLE_PLAY");
+  const drawnCards = await page.locator("[data-private-hand] [data-card-id]")
+    .evaluateAll((nodes, prior) => nodes
+      .filter((node) => !prior.includes(node.dataset.cardId))
+      .map((node) => node.dataset.cardId), cardsBeforeDraw);
+  assert.equal(drawnCards.length, 1, "a stock draw should add exactly one private card");
+  const highlightedDraw = page.locator(
+    `[data-private-hand] [data-card-id="${drawnCards[0]}"]`
+  );
+  assert.equal(await highlightedDraw.getAttribute("data-recently-drawn"), "true");
+  assert.match(await highlightedDraw.getAttribute("aria-label"), /just drawn/);
   await refreshPreservesAcceptedState(page, "TABLE_PLAY", "table play");
 
   await chooseCards(page, ["diamonds:10"]);

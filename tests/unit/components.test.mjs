@@ -139,6 +139,7 @@ test("playing cards expose suit, wild, position, and selection beyond colour", (
     rank: "Q",
     suit: "spades",
     wild: true,
+    recentlyDrawn: true,
     position: 4,
     total: 11,
     onToggle: (value) => {
@@ -146,11 +147,13 @@ test("playing cards expose suit, wild, position, and selection beyond colour", (
     }
   });
   assert.equal(card.tagName, "BUTTON");
-  assert.match(card.getAttribute("aria-label"), /Queen of spades, wild, not selected, card 4 of 11/);
+  assert.match(card.getAttribute("aria-label"), /Queen of spades, wild, just drawn, not selected, card 4 of 11/);
   assert.equal(byClass(card, "playing-card__wild").textContent, "WILD");
+  assert.equal(byClass(card, "playing-card__recent").textContent, "DRAWN");
+  assert.equal(card.getAttribute("data-recently-drawn"), "true");
   card.dispatch("click");
   assert.equal(card.getAttribute("aria-pressed"), "true");
-  assert.match(card.getAttribute("aria-label"), /selected/);
+  assert.match(card.getAttribute("aria-label"), /just drawn, selected/);
   assert.equal(selection, true);
 });
 

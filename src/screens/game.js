@@ -320,7 +320,12 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     showDetails: false,
     handToolsMinimized: false,
     handScrollLeft: 0,
-    promptedDrawTurns: new Set()
+    promptedDrawTurns: new Set(),
+    recentDrawnCardId: null,
+    previousOwnCardIds: null,
+    previousHandId: null,
+    previousHandPhase: null,
+    previousActiveSeatId: null
   };
 
   const workspace = element("div", {
@@ -376,7 +381,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
 
   function acceptedFeedbackTarget(queued) {
     const { action } = queued;
-    if (action === "selection" && queued.cardId) {
+    if ((action === "selection" || action === "draw") && queued.cardId) {
       return [...workspace.querySelectorAll("[data-private-hand] [data-card-id]")]
         .find((node) => node.dataset.cardId === queued.cardId);
     }
@@ -660,6 +665,37 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
     } else if (feedback) {
       announce(feedback.message, feedback.tone);
     }
+  }
+
+  function reconcileRecentDraw(hand, localSeatId, ownCards) {
+    const sameHand = Boolean(hand.id) && ui.previousHandId === hand.id;
+    const priorCards = ui.previousOwnCardIds;
+    const priorCardSet = new Set(priorCards ?? []);
+    const addedCards = priorCards
+      ? ownCards.filter((cardId) => !priorCardSet.has(cardId))
+      : [];
+    const completedLocalDraw = sameHand
+      && ui.previousHandPhase === "AWAITING_DRAW"
+      && ui.previousActiveSeatId === localSeatId
+      && hand.activeSeatId === localSeatId
+      && ["TABLE_PLAY", "AWAITING_DISCARD"].includes(hand.phase)
+      && addedCards.length === 1;
+
+    if (completedLocalDraw) {
+      ui.recentDrawnCardId = addedCards[0];
+      queueAcceptedFeedback("draw", { cardId: addedCards[0] });
+    }
+
+    const highlightStillApplies = ui.recentDrawnCardId
+      && ownCards.includes(ui.recentDrawnCardId)
+      && hand.activeSeatId === localSeatId
+      && ["TABLE_PLAY", "AWAITING_DISCARD"].includes(hand.phase);
+    if (!highlightStillApplies) ui.recentDrawnCardId = null;
+
+    ui.previousOwnCardIds = [...ownCards];
+    ui.previousHandId = hand.id ?? null;
+    ui.previousHandPhase = hand.phase ?? null;
+    ui.previousActiveSeatId = hand.activeSeatId ?? null;
   }
 
   function handleSessionChange() {
@@ -1301,6 +1337,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
       return;
     }
     const ownCards = Array.isArray(hand.ownHandCardIds) ? hand.ownHandCardIds : [];
+    reconcileRecentDraw(hand, localSeatId, ownCards);
     reconcilePrivateStaging(ownCards);
     const cards = sortCardIds(ownCards, ui.sort);
     const revision = view.revision ?? snapshot.state?.revision;
@@ -1398,6 +1435,7 @@ export function gameScreen({ navigate, router, localSession, onlineGameSession, 
           ...card,
           wild: card?.rank === hand.wildRank,
           selected: selected.has(cardId),
+          recentlyDrawn: cardId === ui.recentDrawnCardId,
           disabled: !canSelect,
           onToggle: (next) => setSelection(cardId, next)
         };

@@ -118,6 +118,25 @@ try {
   await page.waitForTimeout(25);
   assert.equal(await automaticDrawMenu.count(), 0,
     "closing the automatic draw menu should keep it closed for the rest of that turn");
+  await page.locator('[data-game-control="open-actions"]').click();
+  await automaticDrawMenu.waitFor();
+  await page.locator('[data-game-control="draw-stock"]').click();
+  assert.equal(
+    (await page.evaluate(() => globalThis.gameFlowHarness.pendingAction()))?.type,
+    "DRAW_STOCK"
+  );
+  assert.equal(await page.evaluate(() => globalThis.gameFlowHarness.projectPendingAction()), true);
+  assert.equal(await page.evaluate(() => globalThis.gameFlowHarness.acceptPendingAction()), true);
+  const drawnCard = page.locator('[data-private-hand] [data-card-id="diamonds:2"]');
+  await drawnCard.waitFor();
+  assert.equal(await drawnCard.getAttribute("data-recently-drawn"), "true",
+    "the authoritative card added by a draw should remain visibly highlighted");
+  assert.match(await drawnCard.getAttribute("aria-label"), /just drawn/);
+  assert.equal(await drawnCard.locator(".playing-card__recent").textContent(), "DRAWN");
+
+  await page.evaluate(() => globalThis.gameFlowHarness.passTurnToBlake());
+  assert.equal(await drawnCard.getAttribute("data-recently-drawn"), "false",
+    "the just-drawn highlight should clear when the player's turn ends");
 } finally {
   await browser.close();
   await server.close();

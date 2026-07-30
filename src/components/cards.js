@@ -24,7 +24,7 @@ const RANK_NAMES = Object.freeze({
   WILD: "Wild"
 });
 
-function cardLabel({ rank, suit, wild, selected, position, total }) {
+function cardLabel({ rank, suit, wild, selected, recentlyDrawn, position, total }) {
   const normalizedRank = String(rank ?? "").toUpperCase();
   const rankName = RANK_NAMES[normalizedRank] || String(rank || "Unknown card");
   const suitInfo = SUITS[String(suit ?? "").toLowerCase()];
@@ -32,6 +32,9 @@ function cardLabel({ rank, suit, wild, selected, position, total }) {
 
   if (wild || normalizedRank === "WILD") {
     parts.push("wild");
+  }
+  if (recentlyDrawn) {
+    parts.push("just drawn");
   }
   parts.push(selected ? "selected" : "not selected");
 
@@ -59,6 +62,7 @@ export function playingCard({
   suit,
   wild = false,
   selected = false,
+  recentlyDrawn = false,
   position,
   total,
   disabled = false,
@@ -76,12 +80,13 @@ export function playingCard({
   }
 
   const card = element(interactive ? "button" : "article", {
-    className: `playing-card${suitInfo?.red ? " playing-card--red" : ""}`,
+    className: `playing-card${suitInfo?.red ? " playing-card--red" : ""}${recentlyDrawn ? " playing-card--recent" : ""}`,
     attributes: {
       type: interactive ? "button" : undefined,
-      "aria-label": cardLabel({ rank, suit, wild, selected, position, total }),
+      "aria-label": cardLabel({ rank, suit, wild, selected, recentlyDrawn, position, total }),
       "aria-pressed": interactive ? String(Boolean(selected)) : undefined,
       "data-selected": String(Boolean(selected)),
+      "data-recently-drawn": String(Boolean(recentlyDrawn)),
       "data-rank": normalizedRank,
       "data-suit": suitInfo?.name,
       "data-wild": String(Boolean(wild || normalizedRank === "WILD"))
@@ -118,6 +123,16 @@ export function playingCard({
     );
   }
 
+  if (recentlyDrawn) {
+    card.append(
+      element("span", {
+        className: "playing-card__recent",
+        text: "DRAWN",
+        attributes: { "aria-hidden": "true" }
+      })
+    );
+  }
+
   const check = element("span", {
     className: "playing-card__check",
     text: "✓",
@@ -135,7 +150,15 @@ export function playingCard({
       card.setAttribute("data-selected", String(nextSelected));
       card.setAttribute(
         "aria-label",
-        cardLabel({ rank, suit, wild, selected: nextSelected, position, total })
+        cardLabel({
+          rank,
+          suit,
+          wild,
+          selected: nextSelected,
+          recentlyDrawn,
+          position,
+          total
+        })
       );
       check.hidden = !nextSelected;
       if (typeof onToggle === "function") {

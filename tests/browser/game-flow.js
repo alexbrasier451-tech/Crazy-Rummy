@@ -98,6 +98,18 @@ globalThis.gameFlowHarness = Object.freeze({
       if (!snapshot.view.hand.ownHandCardIds.includes(pendingAction.payload.wildCardId)) {
         snapshot.view.hand.ownHandCardIds.push(pendingAction.payload.wildCardId);
       }
+    } else if (pendingAction.type === "DRAW_STOCK") {
+      snapshot.view.hand.ownHandCardIds.push("diamonds:2");
+      snapshot.view.hand.handCountsBySeat.a += 1;
+      snapshot.view.hand.stockCount -= 1;
+      snapshot.view.hand.phase = "TABLE_PLAY";
+    } else if (pendingAction.type === "DRAW_DISCARD") {
+      const drawnCardId = snapshot.view.hand.discardCardIds.pop();
+      if (drawnCardId) {
+        snapshot.view.hand.ownHandCardIds.push(drawnCardId);
+        snapshot.view.hand.handCountsBySeat.a += 1;
+      }
+      snapshot.view.hand.phase = "TABLE_PLAY";
     }
     snapshot.view.revision += 1;
     pendingAction.projected = true;
